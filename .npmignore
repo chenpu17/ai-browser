@@ -1,0 +1,10 @@
+src/
+tests/
+docs/
+.claude/
+scripts/
+*.ts
+!dist/**
+tsconfig.json
+vitest.config.*
+.eslintrc.*

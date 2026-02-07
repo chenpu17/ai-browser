@@ -1,17 +1,33 @@
 {
   "name": "ai-browser",
   "version": "0.1.0",
+  "type": "module",
   "description": "AI-friendly browser with semantic output",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "bin": {
+    "ai-browser": "./dist/cli/server.js",
+    "ai-browser-mcp": "./dist/cli/mcp-stdio.js"
+  },
+  "files": [
+    "dist/",
+    "public/"
+  ],
   "scripts": {
     "build": "tsc",
-    "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
+    "dev": "tsx watch src/cli/server.ts",
+    "start": "node dist/cli/server.js",
     "test": "vitest",
     "test:run": "vitest run",
     "lint": "eslint src --ext .ts",
-    "agent": "tsx src/agent/index.ts"
+    "agent": "tsx src/agent/index.ts",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@fastify/static": "^6.12.0",

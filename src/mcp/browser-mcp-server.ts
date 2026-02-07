@@ -11,7 +11,11 @@ import {
   ElementMatcher,
 } from '../semantic/index.js';
 
-export function createBrowserMcpServer(sessionManager: SessionManager, cookieStore?: CookieStore): McpServer {
+export interface BrowserMcpServerOptions {
+  headless?: boolean | 'new';
+}
+
+export function createBrowserMcpServer(sessionManager: SessionManager, cookieStore?: CookieStore, options?: BrowserMcpServerOptions): McpServer {
   const server = new McpServer(
     { name: 'browser-mcp-server', version: '0.1.0' },
     { capabilities: { tools: {} } }
@@ -60,7 +64,8 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     '(内部工具，请勿调用)',
     {},
     safe(async () => {
-      const session = await sessionManager.create();
+      const sessionOpts = options?.headless !== undefined ? { headless: options.headless } : {};
+      const session = await sessionManager.create(sessionOpts);
       return textResult({ sessionId: session.id });
     })
   );

@@ -11,9 +11,42 @@ const DEFAULT_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
 
 export class BrowserManager {
-  private browser: Browser | null = null;
+  private headlessBrowser: Browser | null = null;
+  private headfulBrowser: Browser | null = null;
 
+  /** 默认 headless 模式（兼容旧调用） */
   async launch(options: BrowserOptions = {}): Promise<void> {
+    const headless = options.headless ?? (process.env.HEADLESS === 'false' ? false : 'new');
+    if (headless === false) {
+      this.headfulBrowser = await this.launchInstance(false, options);
+    } else {
+      this.headlessBrowser = await this.launchInstance(headless, options);
+    }
+  }
+
+  /** 判断是否为 headful 模式（headless === false） */
+  private isHeadful(headless: boolean | 'new' | undefined): boolean {
+    return headless === false;
+  }
+
+  /** 按需获取指定模式的浏览器实例，不存在则自动启动 */
+  private async getBrowser(headless: boolean | 'new' | undefined): Promise<Browser> {
+    if (this.isHeadful(headless)) {
+      if (!this.headfulBrowser) {
+        this.headfulBrowser = await this.launchInstance(false);
+      }
+      return this.headfulBrowser;
+    }
+    if (!this.headlessBrowser) {
+      this.headlessBrowser = await this.launchInstance('new');
+    }
+    return this.headlessBrowser;
+  }
+
+  private async launchInstance(
+    headless: boolean | 'new',
+    options: BrowserOptions = {},
+  ): Promise<Browser> {
     const executablePath = process.env.CHROME_PATH || this.detectChromePath();
     const proxyServer = process.env.PROXY_SERVER || '';
 
@@ -29,11 +62,7 @@ export class BrowserManager {
       args.push(`--proxy-server=${proxyServer}`);
     }
 
-    this.browser = await puppeteer.launch({
-      executablePath,
-      headless: options.headless ?? (process.env.HEADLESS === 'false' ? false : 'new'),
-      args,
-    });
+    return puppeteer.launch({ executablePath, headless, args });
   }
 
   private detectChromePath(): string | undefined {
@@ -47,17 +76,19 @@ export class BrowserManager {
   }
 
   async close(): Promise<void> {
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
+    const promises: Promise<void>[] = [];
+    if (this.headlessBrowser) {
+      promises.push(this.headlessBrowser.close().then(() => { this.headlessBrowser = null; }));
     }
+    if (this.headfulBrowser) {
+      promises.push(this.headfulBrowser.close().then(() => { this.headfulBrowser = null; }));
+    }
+    await Promise.all(promises);
   }
 
   async newPage(options: BrowserOptions = {}): Promise<Page> {
-    if (!this.browser) {
-      throw new Error('Browser not launched');
-    }
-    const page = await this.browser.newPage();
+    const browser = await this.getBrowser(options.headless);
+    const page = await browser.newPage();
     if (options.viewport) {
       await page.setViewport(options.viewport);
     }
@@ -68,6 +99,6 @@ export class BrowserManager {
   }
 
   isLaunched(): boolean {
-    return this.browser !== null;
+    return this.headlessBrowser !== null || this.headfulBrowser !== null;
   }
 }

@@ -587,7 +587,7 @@ export function registerRoutes(
   const cookieStore = new CookieStore();
 
   app.post('/v1/agent/run', async (request) => {
-    const { task, apiKey, baseURL, model, messages, maxIterations } = request.body as any;
+    const { task, apiKey, baseURL, model, messages, maxIterations, headless } = request.body as any;
 
     if (!task || typeof task !== 'string') {
       throw new ApiError(ErrorCode.INVALID_REQUEST, 'task is required', 400);
@@ -600,7 +600,8 @@ export function registerRoutes(
     }
 
     // Create MCP Server + InMemoryTransport + MCP Client
-    const mcpServer = createBrowserMcpServer(sessionManager, cookieStore);
+    const mcpHeadless = headless !== undefined ? { headless: headless as boolean } : {};
+    const mcpServer = createBrowserMcpServer(sessionManager, cookieStore, mcpHeadless);
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await mcpServer.connect(serverTransport);
     const mcpClient = new Client({ name: 'agent', version: '0.1.0' });

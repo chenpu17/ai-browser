@@ -411,6 +411,11 @@
     <input type="password" id="cfgApiKey" placeholder="sk-...">
     <label>Max Iterations</label>
     <input type="number" id="cfgMaxIterations" placeholder="100" min="1" max="1000">
+    <label style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer;">
+      <input type="checkbox" id="cfgHeadless" checked style="width:auto;cursor:pointer;">
+      Headless Mode
+      <span style="color:#484f58;font-size:12px;">(关闭后可看到浏览器窗口，用于人工登录)</span>
+    </label>
     <div class="modal-btns">
       <button class="btn" onclick="closeSettings()">Cancel</button>
       <button class="btn btn-save" onclick="saveSettings()">Save</button>
@@ -450,6 +455,7 @@ function openSettings() {
   document.getElementById('cfgModel').value = s.model || '';
   document.getElementById('cfgApiKey').value = s.apiKey || '';
   document.getElementById('cfgMaxIterations').value = s.maxIterations || 100;
+  document.getElementById('cfgHeadless').checked = s.headless !== false;
   document.getElementById('settingsModal').classList.remove('hidden');
 }
 
@@ -463,6 +469,7 @@ function saveSettings() {
     model: document.getElementById('cfgModel').value.trim(),
     apiKey: document.getElementById('cfgApiKey').value.trim(),
     maxIterations: parseInt(document.getElementById('cfgMaxIterations').value) || 100,
+    headless: document.getElementById('cfgHeadless').checked,
   };
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   closeSettings();
@@ -573,6 +580,7 @@ async function startAgent() {
     if (settings.baseURL) body.baseURL = settings.baseURL;
     if (settings.model) body.model = settings.model;
     if (settings.maxIterations) body.maxIterations = settings.maxIterations;
+    if (settings.headless === false) body.headless = false;
     if (conversationHistory.length > 0) body.messages = conversationHistory;
 
     const res = await fetch('/v1/agent/run', {
