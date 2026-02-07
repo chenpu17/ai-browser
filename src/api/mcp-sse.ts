@@ -6,9 +6,9 @@ import { createBrowserMcpServer } from '../mcp/browser-mcp-server.js';
 
 export function registerMcpSseRoutes(
   app: FastifyInstance,
-  sessionManager: SessionManager
+  sessionManager: SessionManager,
+  cookieStore: CookieStore
 ) {
-  const cookieStore = new CookieStore();
 
   // sessionId -> SSEServerTransport
   const transports = new Map<string, SSEServerTransport>();
@@ -18,7 +18,9 @@ export function registerMcpSseRoutes(
     reply.hijack();
 
     const transport = new SSEServerTransport('/mcp/message', reply.raw);
-    const mcpServer = createBrowserMcpServer(sessionManager, cookieStore);
+    const mcpServer = createBrowserMcpServer(sessionManager, cookieStore, {
+      urlValidation: { blockPrivate: true },
+    });
 
     const sessionId = transport.sessionId;
     transports.set(sessionId, transport);

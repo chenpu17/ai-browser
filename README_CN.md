@@ -123,8 +123,6 @@ LLM Agent 可通过 MCP 协议调用以下浏览器工具：
 | `scroll` | 页面上下滚动 |
 | `go_back` | 浏览器后退 |
 | `wait` | 等待页面加载 |
-| `get_cookies` | 获取指定 URL 的 Cookie |
-| `set_cookies` | 设置指定 URL 的 Cookie |
 
 ## REST API
 
@@ -161,7 +159,7 @@ Cookie 通过内置存储在会话间共享，因此可以先用 headful 会话�
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | `PORT` | HTTP 服务端口 | `3000` |
-| `HOST` | HTTP 服务监听地址 | `0.0.0.0` |
+| `HOST` | HTTP 服务监听地址 | `127.0.0.1` |
 | `HEADLESS` | 设为 `false` 启用 headful 模式 | `true` |
 | `CHROME_PATH` | 自定义 Chrome/Chromium 路径 | 自动检测 |
 | `PROXY_SERVER` | 浏览器 HTTP 代理 | — |

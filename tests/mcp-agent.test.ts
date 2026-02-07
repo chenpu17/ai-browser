@@ -3,6 +3,7 @@ import path from 'path';
 import Fastify, { FastifyInstance } from 'fastify';
 import { BrowserManager } from '../src/browser/BrowserManager.js';
 import { SessionManager } from '../src/browser/SessionManager.js';
+import { CookieStore } from '../src/browser/CookieStore.js';
 import { registerRoutes } from '../src/api/routes.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -31,7 +32,7 @@ describe('Agent API Routes', () => {
     await browserManager.launch({ headless: true });
     sessionManager = new SessionManager(browserManager);
     app = Fastify();
-    registerRoutes(app, sessionManager);
+    registerRoutes(app, sessionManager, new CookieStore());
     await app.ready();
   });
 

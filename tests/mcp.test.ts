@@ -76,7 +76,9 @@ describe('MCP Browser Server', () => {
   });
 
   beforeEach(async () => {
-    mcpServer = createBrowserMcpServer(sessionManager);
+    mcpServer = createBrowserMcpServer(sessionManager, undefined, {
+      urlValidation: { allowFile: true },
+    });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await mcpServer.connect(st);
     mcpClient = new Client({ name: 'test', version: '0.1.0' });
@@ -140,7 +142,7 @@ describe('MCP Browser Server', () => {
     });
     expect(navRes.isError).toBe(true);
     const err = parseResult(navRes);
-    expect(err.error).toContain('Only http/https/file');
+    expect(err.error).toContain('Protocol not allowed');
 
     await mcpClient.callTool({ name: 'close_session', arguments: { sessionId } });
   });

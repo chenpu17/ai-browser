@@ -1,18 +1,22 @@
 // Library exports — programmatic API
-export { createBrowserMcpServer, BrowserMcpServerOptions } from './mcp/browser-mcp-server.js';
-export { BrowserManager, BrowserOptions, SessionManager, Session, CookieStore } from './browser/index.js';
+export { createBrowserMcpServer } from './mcp/browser-mcp-server.js';
+export type { BrowserMcpServerOptions } from './mcp/browser-mcp-server.js';
+export { BrowserManager, SessionManager, CookieStore } from './browser/index.js';
+export type { BrowserOptions, Session } from './browser/index.js';
 export { BrowsingAgent } from './agent/agent-loop.js';
 export {
   ContentExtractor,
-  ContentSection,
-  ExtractedContent,
   ElementCollector,
   PageAnalyzer,
-  PageAnalysis,
   RegionDetector,
   ElementMatcher,
-  MatchCandidate,
   IframeHandler,
+} from './semantic/index.js';
+export type {
+  ContentSection,
+  ExtractedContent,
+  PageAnalysis,
+  MatchCandidate,
   FrameInfo,
 } from './semantic/index.js';
 export { registerRoutes, ApiError, ErrorCode } from './api/index.js';

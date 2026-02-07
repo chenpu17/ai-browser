@@ -15,9 +15,12 @@ async function main() {
 
   const sessionManager = new SessionManager(browserManager);
   const cookieStore = new CookieStore();
+  sessionManager.setCookieStore(cookieStore);
 
   log('Creating MCP server...');
-  const mcpServer = createBrowserMcpServer(sessionManager, cookieStore);
+  const mcpServer = createBrowserMcpServer(sessionManager, cookieStore, {
+    urlValidation: { allowFile: true },
+  });
 
   const transport = new StdioServerTransport();
   await mcpServer.connect(transport);

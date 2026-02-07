@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Fastify, { FastifyInstance } from 'fastify';
 import { BrowserManager } from '../src/browser/BrowserManager.js';
 import { SessionManager } from '../src/browser/SessionManager.js';
+import { CookieStore } from '../src/browser/CookieStore.js';
 import { registerRoutes } from '../src/api/routes.js';
 
 describe('API Routes', () => {
@@ -15,7 +16,7 @@ describe('API Routes', () => {
     sessionManager = new SessionManager(browserManager);
 
     app = Fastify();
-    registerRoutes(app, sessionManager);
+    registerRoutes(app, sessionManager, new CookieStore());
     await app.ready();
   });
 

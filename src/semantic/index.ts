@@ -1,8 +1,13 @@
 export { ElementCollector } from './ElementCollector.js';
-export { PageAnalyzer, PageAnalysis } from './PageAnalyzer.js';
+export { PageAnalyzer } from './PageAnalyzer.js';
+export type { PageAnalysis } from './PageAnalyzer.js';
 export { StateTracker } from './StateTracker.js';
 export { RegionDetector } from './RegionDetector.js';
-export { ElementMatcher, MatchCandidate } from './ElementMatcher.js';
-export { IframeHandler, FrameInfo } from './IframeHandler.js';
-export { ContentExtractor, ContentSection, ExtractedContent } from './ContentExtractor.js';
-export { ModelRegistry, SemanticModelAdapter, ModelContext, ModelEnhancement } from './ModelAdapter.js';
+export { ElementMatcher } from './ElementMatcher.js';
+export type { MatchCandidate } from './ElementMatcher.js';
+export { IframeHandler } from './IframeHandler.js';
+export type { FrameInfo } from './IframeHandler.js';
+export { ContentExtractor } from './ContentExtractor.js';
+export type { ContentSection, ExtractedContent } from './ContentExtractor.js';
+export { ModelRegistry } from './ModelAdapter.js';
+export type { SemanticModelAdapter, ModelContext, ModelEnhancement } from './ModelAdapter.js';

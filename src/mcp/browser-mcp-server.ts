@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { SessionManager } from '../browser/index.js';
 import { CookieStore } from '../browser/CookieStore.js';
 import { executeAction } from '../browser/actions.js';
+import { validateUrl, type ValidateUrlOptions } from '../utils/url-validator.js';
 import {
   ElementCollector,
   PageAnalyzer,
@@ -13,6 +14,8 @@ import {
 
 export interface BrowserMcpServerOptions {
   headless?: boolean | 'new';
+  /** URL 校验选项，控制 file: 协议和私网地址访问 */
+  urlValidation?: ValidateUrlOptions;
 }
 
 export function createBrowserMcpServer(sessionManager: SessionManager, cookieStore?: CookieStore, options?: BrowserMcpServerOptions): McpServer {
@@ -75,6 +78,15 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     '(内部工具，请勿调用)',
     { sessionId: z.string().describe('会话ID') },
     safe(async ({ sessionId }) => {
+      // 关闭前保存当前会话 + 所有 headful 会话的 cookie
+      await sessionManager.saveAllCookies(sessionId);
+
+      // headful 会话不自动关闭，保留给用户手动操作
+      const session = sessionManager.get(sessionId);
+      if (session && !session.headless) {
+        return textResult({ success: true, kept: true, reason: 'headful session preserved' });
+      }
+
       const closed = await sessionManager.close(sessionId);
       return textResult({ success: closed });
     })
@@ -90,19 +102,15 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     },
     safe(async ({ sessionId, url }) => {
       // URL validation
-      let parsedUrl: URL;
-      try {
-        parsedUrl = new URL(url);
-      } catch {
-        throw new Error('Invalid URL format');
-      }
-      const allowedProtocols = ['http:', 'https:', 'file:'];
-      if (!allowedProtocols.includes(parsedUrl.protocol)) {
-        throw new Error('Only http/https/file URLs allowed');
+      const check = validateUrl(url, options?.urlValidation ?? {});
+      if (!check.valid) {
+        throw new Error(check.reason);
       }
 
       const tab = getActiveTab(sessionId);
-      // 导航前注入已保存的 cookies
+      // 导航前先从 headful 会话同步最新 cookie（用户可能手动登录了）
+      await sessionManager.syncHeadfulCookies();
+      // 注入已保存的 cookies
       if (cookieStore) {
         const savedCookies = cookieStore.getForUrl(url);
         if (savedCookies.length > 0) {

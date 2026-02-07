@@ -5,14 +5,14 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { BrowserManager, SessionManager } from '../browser/index.js';
+import { BrowserManager, SessionManager, CookieStore } from '../browser/index.js';
 import { registerRoutes, ApiError } from '../api/index.js';
 import { registerMcpSseRoutes } from '../api/mcp-sse.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const DEFAULT_PORT = 3000;
-const DEFAULT_HOST = '0.0.0.0';
+const DEFAULT_HOST = '127.0.0.1';
 
 const { values: args } = parseArgs({
   options: {
@@ -29,6 +29,9 @@ async function main() {
   await browserManager.launch();
 
   const sessionManager = new SessionManager(browserManager);
+  // 进程级共享 CookieStore，REST API 和 SSE MCP 共用
+  const cookieStore = new CookieStore();
+  sessionManager.setCookieStore(cookieStore);
 
   // 静态文件服务
   await app.register(fastifyStatic, {
@@ -52,10 +55,10 @@ async function main() {
   });
 
   // 注册 REST API 路由
-  registerRoutes(app, sessionManager);
+  registerRoutes(app, sessionManager, cookieStore);
 
   // 注册 SSE MCP 端点
-  registerMcpSseRoutes(app, sessionManager);
+  registerMcpSseRoutes(app, sessionManager, cookieStore);
 
   // 优先级: --port > PORT 环境变量 > 默认值
   const portStr = typeof args.port === 'string' ? args.port : process.env.PORT;

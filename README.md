@@ -123,8 +123,6 @@ The following tools are available to LLM agents via MCP:
 | `scroll` | Scroll the page up or down |
 | `go_back` | Navigate back |
 | `wait` | Wait for page loading |
-| `get_cookies` | Get cookies for a URL |
-| `set_cookies` | Set cookies for a URL |
 
 ## REST API
 
@@ -161,7 +159,7 @@ Cookies are shared across sessions via the built-in cookie store, so you can log
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | HTTP server port | `3000` |
-| `HOST` | HTTP server host | `0.0.0.0` |
+| `HOST` | HTTP server host | `127.0.0.1` |
 | `HEADLESS` | Set to `false` for headful mode | `true` |
 | `CHROME_PATH` | Custom Chrome/Chromium path | auto-detect |
 | `PROXY_SERVER` | HTTP proxy for the browser | — |

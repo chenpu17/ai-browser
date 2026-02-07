@@ -53,11 +53,15 @@ export class ElementCollector {
       try {
         const { object } = await client.send('DOM.resolveNode', { backendNodeId });
         if (object?.objectId) {
-          await client.send('Runtime.callFunctionOn', {
-            objectId: object.objectId,
-            functionDeclaration: `function(id) { this.setAttribute('data-semantic-id', id); }`,
-            arguments: [{ value: semanticId }],
-          });
+          try {
+            await client.send('Runtime.callFunctionOn', {
+              objectId: object.objectId,
+              functionDeclaration: `function(id) { this.setAttribute('data-semantic-id', id); }`,
+              arguments: [{ value: semanticId }],
+            });
+          } finally {
+            await client.send('Runtime.releaseObject', { objectId: object.objectId }).catch(() => {});
+          }
         }
       } catch {
         // Element may not be accessible
@@ -145,11 +149,14 @@ export class ElementCollector {
   }
 
   private getState(node: any): ElementState {
+    const disabledProp = node.properties?.find((p: any) => p.name === 'disabled');
+    const focusedProp = node.properties?.find((p: any) => p.name === 'focused');
+    const checkedProp = node.properties?.find((p: any) => p.name === 'checked');
     return {
       visible: true,
-      enabled: !node.properties?.find((p: any) => p.name === 'disabled')?.value,
-      focused: node.focused || false,
-      checked: node.properties?.find((p: any) => p.name === 'checked')?.value,
+      enabled: disabledProp ? !disabledProp.value?.value : true,
+      focused: focusedProp ? !!focusedProp.value?.value : false,
+      checked: checkedProp ? !!checkedProp.value?.value : undefined,
       value: node.value?.value,
     };
   }

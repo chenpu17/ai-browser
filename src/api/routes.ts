@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { FastifyInstance } from 'fastify';
 import { SessionManager } from '../browser/index.js';
 import { executeAction } from '../browser/actions.js';
+import { validateUrl } from '../utils/url-validator.js';
 import {
   ElementCollector,
   PageAnalyzer,
@@ -21,7 +22,8 @@ const MAX_BATCH_ACTIONS = 50;
 
 export function registerRoutes(
   app: FastifyInstance,
-  sessionManager: SessionManager
+  sessionManager: SessionManager,
+  cookieStore: CookieStore
 ) {
   const elementCollector = new ElementCollector();
   const pageAnalyzer = new PageAnalyzer();
@@ -111,15 +113,9 @@ export function registerRoutes(
       if (typeof url !== 'string') {
         throw new ApiError(ErrorCode.INVALID_REQUEST, 'URL must be a string', 400);
       }
-      let parsedUrl: URL;
-      try {
-        parsedUrl = new URL(url);
-      } catch {
-        throw new ApiError(ErrorCode.INVALID_REQUEST, 'Invalid URL format', 400);
-      }
-      const allowedProtocols = ['http:', 'https:', 'file:'];
-      if (!allowedProtocols.includes(parsedUrl.protocol)) {
-        throw new ApiError(ErrorCode.INVALID_REQUEST, 'Only http/https/file URLs allowed', 400);
+      const check = validateUrl(url);
+      if (!check.valid) {
+        throw new ApiError(ErrorCode.INVALID_REQUEST, check.reason, 400);
       }
     }
 
@@ -194,15 +190,9 @@ export function registerRoutes(
     if (!url || typeof url !== 'string') {
       throw new ApiError(ErrorCode.INVALID_REQUEST, 'URL is required', 400);
     }
-    let parsedUrl: URL;
-    try {
-      parsedUrl = new URL(url);
-    } catch {
-      throw new ApiError(ErrorCode.INVALID_REQUEST, 'Invalid URL format', 400);
-    }
-    const allowedProtocols = ['http:', 'https:', 'file:'];
-    if (!allowedProtocols.includes(parsedUrl.protocol)) {
-      throw new ApiError(ErrorCode.INVALID_REQUEST, 'Only http/https/file URLs allowed', 400);
+    const check = validateUrl(url);
+    if (!check.valid) {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, check.reason, 400);
     }
 
     const session = sessionManager.get(sessionId);
@@ -491,36 +481,6 @@ export function registerRoutes(
     return { results };
   });
 
-  // 在页面中执行JavaScript（用于精确提取数据）
-  app.post('/v1/sessions/:sessionId/evaluate', async (request) => {
-    const { sessionId } = request.params as any;
-    const { expression, tabId } = request.body as any;
-
-    if (!expression || typeof expression !== 'string') {
-      throw new ApiError(ErrorCode.INVALID_REQUEST, 'Expression is required', 400);
-    }
-
-    const session = sessionManager.get(sessionId);
-    if (!session) {
-      throw new ApiError(ErrorCode.SESSION_NOT_FOUND, 'Session not found', 404);
-    }
-
-    const tab = tabId
-      ? sessionManager.getTab(sessionId, tabId)
-      : sessionManager.getActiveTab(sessionId);
-    if (!tab) {
-      throw new ApiError(ErrorCode.INVALID_REQUEST, 'Tab not found', 404);
-    }
-
-    try {
-      const result = await tab.page.evaluate(expression);
-      sessionManager.updateActivity(sessionId);
-      return { success: true, tabId: tab.id, result };
-    } catch (err: any) {
-      throw new ApiError(ErrorCode.ACTION_FAILED, err.message || 'Evaluate failed', 400);
-    }
-  });
-
   // 等待指定时间（配合动态内容加载）
   app.post('/v1/sessions/:sessionId/wait', async (request) => {
     const { sessionId } = request.params as any;
@@ -583,8 +543,6 @@ export function registerRoutes(
     cleanupTimer?: ReturnType<typeof setTimeout>;
   }
   const runningAgents = new Map<string, AgentEntry>();
-  // 进程级 CookieStore，跨 agent 共享，保持登录状态
-  const cookieStore = new CookieStore();
 
   app.post('/v1/agent/run', async (request) => {
     const { task, apiKey, baseURL, model, messages, maxIterations, headless } = request.body as any;
@@ -601,7 +559,10 @@ export function registerRoutes(
 
     // Create MCP Server + InMemoryTransport + MCP Client
     const mcpHeadless = headless !== undefined ? { headless: headless as boolean } : {};
-    const mcpServer = createBrowserMcpServer(sessionManager, cookieStore, mcpHeadless);
+    const mcpServer = createBrowserMcpServer(sessionManager, cookieStore, {
+      ...mcpHeadless,
+      urlValidation: { allowFile: true },
+    });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await mcpServer.connect(serverTransport);
     const mcpClient = new Client({ name: 'agent', version: '0.1.0' });

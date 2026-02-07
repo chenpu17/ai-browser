@@ -19,7 +19,7 @@ describe('SessionManager', () => {
 
   it('should create a session', async () => {
     const session = await sessionManager.create();
-    expect(session.id).toMatch(/^sess_\d+$/);
+    expect(session.id).toMatch(/^sess_[0-9a-f-]{36}$/);
     expect(session.tabs.size).toBe(1);
     expect(session.activeTabId).toBeDefined();
     const activeTab = sessionManager.getActiveTab(session.id);

@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { Page } from 'puppeteer';
 import { BrowserManager, BrowserOptions } from './BrowserManager.js';
+import { CookieStore } from './CookieStore.js';
 
 export interface Tab {
   id: string;
@@ -14,20 +16,32 @@ export interface Session {
   createdAt: number;
   lastActivityAt: number;
   expiresAt: number;
+  headless: boolean;
+  browserOptions: BrowserOptions;
 }
 
 export class SessionManager {
   private sessions = new Map<string, Session>();
   private browserManager: BrowserManager;
-  private sessionCounter = 0;
   private tabCounter = 0;
   private cleanupTimer: NodeJS.Timeout | null = null;
+  private cookieSyncTimer: NodeJS.Timeout | null = null;
+  private cookieStore: CookieStore | null = null;
+  private cleanupRunning = false;
+  private syncRunning = false;
   private readonly CLEANUP_INTERVAL = 60000;
+  private readonly COOKIE_SYNC_INTERVAL = 30000;
   private readonly MAX_TABS_PER_SESSION = 20;
 
   constructor(browserManager: BrowserManager) {
     this.browserManager = browserManager;
     this.startCleanupTimer();
+  }
+
+  /** 设置 CookieStore，启动 headful 会话的定期 cookie 同步 */
+  setCookieStore(store: CookieStore): void {
+    this.cookieStore = store;
+    this.startCookieSyncTimer();
   }
 
   private startCleanupTimer(): void {
@@ -37,27 +51,145 @@ export class SessionManager {
   }
 
   private async cleanupExpiredSessions(): Promise<void> {
-    const now = Date.now();
-    const expiredIds: string[] = [];
-    for (const [id, session] of this.sessions) {
-      if (session.expiresAt < now) {
-        expiredIds.push(id);
+    if (this.cleanupRunning) return;
+    this.cleanupRunning = true;
+    try {
+      const now = Date.now();
+      const expiredIds: string[] = [];
+      for (const [id, session] of this.sessions) {
+        if (session.expiresAt < now) {
+          expiredIds.push(id);
+        }
       }
+      // 过期关闭前保存 cookie（尤其是 headful 会话可能有用户手动登录的状态）
+      if (this.cookieStore && expiredIds.length > 0) {
+        for (const id of expiredIds) {
+          await this.saveSessionCookies(this.sessions.get(id));
+        }
+      }
+      await Promise.all(expiredIds.map((id) => this.close(id)));
+    } finally {
+      this.cleanupRunning = false;
     }
-    await Promise.all(expiredIds.map((id) => this.close(id)));
   }
 
-  stopCleanupTimer(): void {
+  stopTimers(): void {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
+    }
+    if (this.cookieSyncTimer) {
+      clearInterval(this.cookieSyncTimer);
+      this.cookieSyncTimer = null;
+    }
+  }
+
+  private startCookieSyncTimer(): void {
+    if (this.cookieSyncTimer) return;
+    this.cookieSyncTimer = setInterval(() => {
+      this.syncHeadfulCookies();
+    }, this.COOKIE_SYNC_INTERVAL);
+  }
+
+  /** 通过 CDP 获取页面所有 cookie（包括跨域 SSO cookie）并保存到 CookieStore */
+  private async saveSessionCookies(session: Session | undefined): Promise<void> {
+    if (!this.cookieStore || !session) return;
+    for (const tab of session.tabs.values()) {
+      try {
+        const url = tab.page.url();
+        if (!url || url === 'about:blank') continue;
+        const client = await tab.page.createCDPSession();
+        try {
+          const { cookies } = await client.send('Network.getAllCookies');
+          this.cookieStore.save(url, cookies as any[]);
+        } finally {
+          await client.detach().catch(() => {});
+        }
+      } catch {
+        // page may be closed or crashed, ignore
+      }
+    }
+  }
+
+  /** 从所有 headful 会话的页面中采集 cookie 保存到 CookieStore */
+  async syncHeadfulCookies(): Promise<void> {
+    if (!this.cookieStore || this.syncRunning) return;
+    this.syncRunning = true;
+    try {
+      const headfulSessions = [...this.sessions.values()].filter(s => !s.headless);
+      for (const session of headfulSessions) {
+        await this.saveSessionCookies(session);
+      }
+    } finally {
+      this.syncRunning = false;
+    }
+  }
+
+  /** 保存指定会话 + 所有 headful 会话的 cookie（用于 close_session 前） */
+  async saveAllCookies(sessionId: string): Promise<void> {
+    if (!this.cookieStore) return;
+    // 保存当前会话的 cookie
+    await this.saveSessionCookies(this.sessions.get(sessionId));
+    // 同步所有 headful 会话的 cookie
+    await this.syncHeadfulCookies();
+  }
+
+  /** 为 headful 页面注册自动 cookie 保存（检测到 Set-Cookie 响应头时触发，防抖 2 秒） */
+  private async setupAutoCookieSync(page: Page): Promise<void> {
+    if (!this.cookieStore) return;
+    const store = this.cookieStore;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const saveCookies = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        try {
+          const url = page.url();
+          if (!url || url === 'about:blank') return;
+          const c = await page.createCDPSession();
+          try {
+            const { cookies } = await c.send('Network.getAllCookies');
+            store.save(url, cookies as any[]);
+          } finally {
+            await c.detach().catch(() => {});
+          }
+        } catch {
+          // page closed, ignore
+        }
+      }, 2000);
+    };
+
+    // 用持久 CDP session 监听 Set-Cookie 响应头
+    try {
+      const client = await page.createCDPSession();
+      await client.send('Network.enable');
+      client.on('Network.responseReceivedExtraInfo', (params: any) => {
+        const headers = params.headers || {};
+        // 检查是否有 set-cookie 头（不区分大小写）
+        const hasSetCookie = Object.keys(headers).some(
+          k => k.toLowerCase() === 'set-cookie'
+        );
+        if (hasSetCookie) saveCookies();
+      });
+      // 页面导航也触发保存
+      page.on('framenavigated', (frame) => {
+        if (frame === page.mainFrame()) saveCookies();
+      });
+    } catch {
+      // fallback: 如果 CDP 失败，仅用 framenavigated
+      page.on('framenavigated', (frame) => {
+        if (frame === page.mainFrame()) saveCookies();
+      });
     }
   }
 
   async create(options: BrowserOptions = {}): Promise<Session> {
     const page = await this.browserManager.newPage(options);
     const now = Date.now();
-    const timeout = (options.timeout ?? 3600) * 1000;
+    // headful 会话默认 24 小时超时，headless 默认 1 小时
+    const isHeadful = options.headless === false;
+    const defaultTimeout = isHeadful ? 86400 : 3600;
+    const timeout = (options.timeout ?? defaultTimeout) * 1000;
 
     const tabId = `tab_${++this.tabCounter}`;
     const tab: Tab = { id: tabId, page, url: '' };
@@ -65,15 +197,21 @@ export class SessionManager {
     tabs.set(tabId, tab);
 
     const session: Session = {
-      id: `sess_${++this.sessionCounter}`,
+      id: `sess_${randomUUID()}`,
       tabs,
       activeTabId: tabId,
       createdAt: now,
       lastActivityAt: now,
       expiresAt: now + timeout,
+      headless: options.headless !== false,
+      browserOptions: options,
     };
 
     this.sessions.set(session.id, session);
+    // headful 会话注册自动 cookie 同步（检测到 Set-Cookie 时自动保存）
+    if (isHeadful) {
+      await this.setupAutoCookieSync(page);
+    }
     return session;
   }
 
@@ -97,7 +235,10 @@ export class SessionManager {
       throw new Error(`Maximum tabs per session (${this.MAX_TABS_PER_SESSION}) exceeded`);
     }
 
-    const page = await this.browserManager.newPage();
+    const page = await this.browserManager.newPage(session.browserOptions);
+    if (!session.headless) {
+      await this.setupAutoCookieSync(page);
+    }
     const tabId = `tab_${++this.tabCounter}`;
     const tab: Tab = { id: tabId, page, url: '' };
     session.tabs.set(tabId, tab);
@@ -169,12 +310,27 @@ export class SessionManager {
   updateActivity(id: string): void {
     const session = this.sessions.get(id);
     if (session) {
-      session.lastActivityAt = Date.now();
+      const now = Date.now();
+      session.lastActivityAt = now;
+      // headful 会话有活跃操作时延长过期时间，避免用户手动操作期间被清理
+      if (!session.headless) {
+        const remaining = session.expiresAt - now;
+        const minRemaining = 3600 * 1000; // 至少保留 1 小时
+        if (remaining < minRemaining) {
+          session.expiresAt = now + minRemaining;
+        }
+      }
     }
   }
 
   async closeAll(): Promise<void> {
-    this.stopCleanupTimer();
+    this.stopTimers();
+    // 关闭前保存所有会话的 cookie
+    if (this.cookieStore) {
+      for (const session of this.sessions.values()) {
+        await this.saveSessionCookies(session);
+      }
+    }
     const ids = Array.from(this.sessions.keys());
     await Promise.all(ids.map((id) => this.close(id)));
   }
