@@ -98,6 +98,7 @@ POST /v1/sessions
 ```
 
 说明：
+- `headless`: 设为 `false` 启用 headful 模式（用于手动登录等场景），默认 `true`
 - `timeout`: 会话超时时间（秒），默认 3600，超时后自动清理
 
 响应：
@@ -302,3 +303,80 @@ GET /v1/sessions/{sessionId}/content
   }
 }
 ```
+
+### 6. 标签页管理
+
+#### 创建标签页
+
+```
+POST /v1/sessions/{sessionId}/tabs
+```
+
+请求：
+```json
+{
+  "url": "https://example.com"
+}
+```
+
+#### 列出标签页
+
+```
+GET /v1/sessions/{sessionId}/tabs
+```
+
+### 7. 截图
+
+```
+GET /v1/sessions/{sessionId}/screenshot
+```
+
+返回 base64 编码的页面截图。
+
+### 8. Agent 接口
+
+#### 启动 Agent 任务
+
+```
+POST /v1/agent/run
+```
+
+请求：
+```json
+{
+  "task": "搜索 AI Browser 相关信息",
+  "apiKey": "sk-xxx",
+  "baseURL": "https://api.openai.com/v1",
+  "model": "gpt-4",
+  "headless": true,
+  "maxIterations": 20
+}
+```
+
+#### Agent 事件流
+
+```
+GET /v1/agent/{agentId}/events
+```
+
+通过 SSE 实时推送 Agent 执行过程中的事件（工具调用、结果、完成等）。
+
+### 9. MCP SSE 端点
+
+供远程 MCP 客户端通过 SSE 传输接入：
+
+#### 建立 SSE 连接
+
+```
+GET /mcp/sse
+```
+
+返回 SSE 事件流，首条消息包含 `sessionId` 和消息端点 URL。
+
+#### 发送 MCP 消息
+
+```
+POST /mcp/message?sessionId=xxx
+```
+
+每个 SSE 连接对应一个独立的 MCP Server 实例。

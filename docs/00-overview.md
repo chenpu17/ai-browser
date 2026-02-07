@@ -4,6 +4,25 @@
 
 AI Browser 是一款专为 AI Agent 设计的浏览器，提供结构化的语义输出和语义化的操作接口，让 AI 能够高效地理解和操作网页。
 
+## 安装与使用
+
+```bash
+npm install -g ai-browser
+```
+
+安装后提供两个命令：
+
+| 命令 | 说明 |
+|------|------|
+| `ai-browser` | 启动 HTTP 服务（Web UI + REST API + SSE MCP 端点） |
+| `ai-browser-mcp` | 启动 stdio MCP 服务，供 Claude Desktop / Cursor 等调用 |
+
+也可作为库导入：
+
+```typescript
+import { createBrowserMcpServer, BrowserManager, SessionManager, BrowsingAgent } from 'ai-browser';
+```
+
 ## 核心问题
 
 现有浏览器是为人类设计的，AI 使用时存在以下痛点：
@@ -26,7 +45,12 @@ AI Browser 是一款专为 AI Agent 设计的浏览器，提供结构化的语�
 
 ### 使用方式
 
-- **调用方**: 外部 AI Agent（通过 API）
+- **调用方**: 外部 AI Agent（通过 MCP 协议或 HTTP API）
+- **接入方式**:
+  - stdio MCP（Claude Desktop / Cursor 等本地 Agent）
+  - SSE MCP（远程 MCP 客户端）
+  - HTTP REST API（自定义集成）
+  - 库导入（编程使用）
 - **场景**: 通用任务（信息读取、表单填写、发送邮件、搜索等）
 
 ### 语义理解层次

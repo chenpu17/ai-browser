@@ -2,19 +2,17 @@
 
 ## 阶段划分
 
-### Phase 1: 基础框架
+### Phase 1: 基础框架 ✅ 已完成
 
 **目标**: 搭建基础架构，实现最小可用版本
 
 **交付物**:
 - 项目脚手架（TypeScript + Node.js）
-- Chromium 控制层（CDP 封装）
-- 基础 API 服务
+- Puppeteer 浏览器控制层
+- 基础 API 服务（Fastify）
 - 简单的元素索引
 
-**验证场景**: 打开页面 → 获取元素列表 → 点击按钮
-
-### Phase 2: 语义引擎
+### Phase 2: 语义引擎 ✅ 已完成
 
 **目标**: 实现核心语义分析能力
 
@@ -24,31 +22,29 @@
 - 状态追踪器
 - 智能等待机制
 
-**验证场景**: 识别登录页 → 自动填写表单 → 提交
-
-### Phase 3: 操作增强
+### Phase 3: 操作增强 ✅ 已完成
 
 **目标**: 完善操作能力和错误处理
 
 **交付物**:
 - 模糊元素匹配
-- 批量操作支持
 - 操作结果反馈
 - 错误恢复机制
+- iframe 处理
 
-**验证场景**: 发送邮件完整流程
+### Phase 4: 扩展能力 ✅ 已完成
 
-### Phase 4: 扩展能力
-
-**目标**: 支持更多场景和模型扩展
+**目标**: 支持更多场景和协议扩展
 
 **交付物**:
-- 内容提取器
-- 模型扩展接口
-- MCP Server 封装
-- 会话持久化
-
-**验证场景**: 复杂多步骤任务
+- 内容提取器（带注意力评分）
+- MCP Server（stdio + SSE 双传输）
+- LLM 驱动的自主浏览 Agent
+- 多会话 & 多标签页管理
+- Headless / Headful 双实例切换
+- Cookie 跨会话共享
+- npm 包发布（`ai-browser` CLI 命令）
+- Web UI（语义分析演示 + Agent 测试页面）
 
 ## 技术栈
 
@@ -59,5 +55,6 @@
 | 浏览器 | Puppeteer | 基于 CDP 的高层封装 |
 | API | Fastify | 高性能 HTTP |
 | 测试 | Vitest | 快速单测 |
+| MCP | @modelcontextprotocol/sdk | MCP 协议实现（stdio + SSE） |
 
-说明：使用 Puppeteer 作为浏览器控制层，底层通过 CDP 与 Chromium 通信。
+说明：使用 Puppeteer 作为浏览器控制层，底层通过 CDP 与 Chromium 通信。MCP 协议通过官方 SDK 实现，支持 stdio 和 SSE 两种传输方式。

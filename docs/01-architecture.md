@@ -8,9 +8,16 @@
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌───────────────────────────────────────────────────────────┐  │
+│  │                     CLI 层                                │  │
+│  │  ai-browser ──→ Fastify HTTP + SSE MCP                    │  │
+│  │  ai-browser-mcp ──→ stdio MCP                             │  │
+│  └───────────────────────────┬───────────────────────────────┘  │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌───────────────────────────────────────────────────────────┐  │
 │  │                      API 层                                │  │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐       │  │
-│  │  │  HTTP API   │  │  MCP Server │  │  WebSocket  │       │  │
+│  │  │  HTTP API   │  │  MCP Server │  │  SSE MCP    │       │  │
 │  │  └─────────────┘  └─────────────┘  └─────────────┘       │  │
 │  └───────────────────────────┬───────────────────────────────┘  │
 │                              │                                  │
@@ -43,15 +50,25 @@
 
 ## 分层职责
 
+### 0. CLI 层
+
+提供两个命令行入口：
+
+| 命令 | 入口文件 | 说明 |
+|------|----------|------|
+| `ai-browser` | `src/cli/server.ts` | 启动 Fastify HTTP 服务，挂载 REST API、Web UI 和 SSE MCP 端点 |
+| `ai-browser-mcp` | `src/cli/mcp-stdio.ts` | 启动 stdio MCP Server，供 Claude Desktop / Cursor 等本地 Agent 调用 |
+
 ### 1. API 层
 
 对外提供服务接口，支持多种协议：
 
 | 协议 | 用途 | 特点 |
 |------|------|------|
-| HTTP API | 同步请求/响应 | 简单易用，适合单次操作 |
-| MCP Server | AI Agent 集成 | 标准化工具协议 |
-| WebSocket | 实时通信 | 支持事件推送、长连接 |
+| HTTP REST API | 同步请求/响应 | 简单易用，适合单次操作 |
+| MCP Server (stdio) | 本地 AI Agent 集成 | 标准化工具协议，通过 stdin/stdout 通信 |
+| MCP Server (SSE) | 远程 AI Agent 集成 | 基于 SSE 的 MCP 传输，支持远程连接 |
+| SSE | Agent 事件流 | 实时推送 Agent 执行过程 |
 
 ### 2. 语义引擎层
 
@@ -77,11 +94,11 @@
 
 ### 4. Chromium 层
 
-使用 Headless Chromium 作为渲染引擎，提供：
+使用 Puppeteer 控制 Chromium，支持 headless + headful 双实例：
 - 完整的网页渲染能力
 - Accessibility Tree
-- DOM 快照
-- 网络请求拦截
+- Headless / Headful 双实例，Cookie 跨实例共享
+- 会话与多标签页管理
 
 ## 横切关注点
 
