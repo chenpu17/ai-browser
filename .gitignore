@@ -9,7 +9,7 @@ dist/
 coverage/
 .vscode/
 .idea/
-tests/scenario-results.json
+tests/scenario-results*.json
 tests/stress-test-report.json
 scripts/*.png
 .claude/
