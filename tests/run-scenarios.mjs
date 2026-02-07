@@ -4,7 +4,7 @@
 
 import http from 'node:http';
 
-const BASE = 'http://localhost:3000';
+const BASE = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 300_000; // 300s per task
 
 function log(msg) {

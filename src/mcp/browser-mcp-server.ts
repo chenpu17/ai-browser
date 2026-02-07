@@ -90,9 +90,9 @@ export function createBrowserMcpServer(sessionManager: SessionManager): McpServe
       } catch {
         throw new Error('Invalid URL format');
       }
-      const allowedProtocols = ['http:', 'https:', 'file:'];
+      const allowedProtocols = ['http:', 'https:'];
       if (!allowedProtocols.includes(parsedUrl.protocol)) {
-        throw new Error('Only http/https/file URLs allowed');
+        throw new Error('Only http/https URLs allowed');
       }
 
       const tab = getActiveTab(sessionId);

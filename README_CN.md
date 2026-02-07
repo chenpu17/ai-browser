@@ -89,8 +89,8 @@ Agent 通过 MCP 协议使用以下浏览器工具：
 | `type_text` | 输入文本，可选 `submit=true` 自动按回车提交 |
 | `press_key` | 按键盘按键（Enter、Escape、Tab 等） |
 | `scroll` | 上下滚动页面 |
+| `go_back` | 返回上一页 |
 | `wait` | 等待页面加载 |
-| `screenshot` | 截取页面截图 |
 
 ## API 接口
 
@@ -100,6 +100,7 @@ Agent 通过 MCP 协议使用以下浏览器工具：
 | `POST` | `/v1/sessions` | 创建浏览器会话 |
 | `GET` | `/v1/sessions/:id/semantic` | 获取语义化元素 |
 | `POST` | `/v1/sessions/:id/action` | 执行浏览器操作 |
+| `GET` | `/v1/sessions/:id/screenshot` | 截取页面截图 |
 | `POST` | `/v1/agent/run` | 启动 Agent 任务 |
 | `GET` | `/v1/agent/:id/events` | SSE 事件流 |
 

@@ -89,8 +89,8 @@ The agent has access to the following browser tools via MCP:
 | `type_text` | Type text into an input, with optional `submit=true` to press Enter |
 | `press_key` | Press keyboard keys (Enter, Escape, Tab, etc.) |
 | `scroll` | Scroll the page up or down |
+| `go_back` | Navigate back to the previous page |
 | `wait` | Wait for page loading |
-| `screenshot` | Take a page screenshot |
 
 ## API Endpoints
 
@@ -100,6 +100,7 @@ The agent has access to the following browser tools via MCP:
 | `POST` | `/v1/sessions` | Create a browser session |
 | `GET` | `/v1/sessions/:id/semantic` | Get semantic elements |
 | `POST` | `/v1/sessions/:id/action` | Execute browser action |
+| `GET` | `/v1/sessions/:id/screenshot` | Take a page screenshot |
 | `POST` | `/v1/agent/run` | Start an agent task |
 | `GET` | `/v1/agent/:id/events` | SSE stream of agent events |
 
@@ -121,6 +122,8 @@ node tests/run-scenarios.mjs
 ```
 
 Scenarios cover: search engines, news sites, documentation, e-commerce, and more.
+
+> **Note:** The agent's system prompt defaults to Chinese. You can customize it in `src/agent/prompt.ts`.
 
 ## License
 

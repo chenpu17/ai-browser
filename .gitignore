@@ -1,8 +1,14 @@
 node_modules/
 dist/
 *.log
+*.tsbuildinfo
 .DS_Store
 .env
+.env.local
+.env.*.local
+coverage/
+.vscode/
+.idea/
 tests/scenario-results.json
 tests/stress-test-report.json
 scripts/*.png
