@@ -654,6 +654,10 @@ function handleEvent(ev) {
     case 'error':
       addMsg('error', ev.message, ev.iteration);
       break;
+    case 'input_required':
+      addMsg('system', 'Agent 正在等待您的输入...');
+      showInputDialog(ev.requestId, ev.question, ev.fields);
+      break;
     case 'done':
       addMsg('done', ev.success ? (ev.result || 'Done') : (ev.error || 'Failed'), null, ev.success);
       addMsg('system', 'Total steps: ' + ev.iterations);
@@ -690,7 +694,18 @@ function formatMdResult(toolName, summary) {
       return md;
     }
     if (toolName === 'get_page_content') {
-      return '## Page Content\n\n```\n' + (obj.text || JSON.stringify(obj, null, 2)) + '\n```';
+      var md = '## ' + (obj.title || 'Page Content') + '\n\n';
+      if (obj.sections && obj.sections.length > 0) {
+        obj.sections.forEach(function(s) {
+          var stars = s.attention >= 0.7 ? '★★★'
+                    : s.attention >= 0.4 ? '★★'
+                    : '★';
+          md += '**[' + stars + ']** ' + s.text + '\n\n';
+        });
+      } else {
+        md += '_No content sections extracted._\n';
+      }
+      return md;
     }
     if (toolName === 'navigate') {
       return '## Navigate\n\n**URL:** ' + (obj.page?.url || '') + '\n\n**Title:** ' + (obj.page?.title || '');
@@ -800,6 +815,99 @@ function esc(s) {
   var d = document.createElement('div');
   d.textContent = s || '';
   return d.innerHTML;
+}
+
+// ========== Input Dialog (ask_human) ==========
+function showInputDialog(requestId, question, fields) {
+  var overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'inputModal';
+
+  var modal = document.createElement('div');
+  modal.className = 'modal';
+
+  var h2 = document.createElement('h2');
+  h2.textContent = question;
+  modal.appendChild(h2);
+
+  fields.forEach(function(field) {
+    var label = document.createElement('label');
+    label.textContent = field.label;
+    modal.appendChild(label);
+
+    var input = document.createElement('input');
+    input.type = field.type || 'text';
+    input.id = 'input_field_' + field.name;
+    input.setAttribute('data-field-name', field.name);
+    input.setAttribute('data-field-type', field.type);
+    input.placeholder = field.label;
+    modal.appendChild(input);
+  });
+
+  var btns = document.createElement('div');
+  btns.className = 'modal-btns';
+
+  var cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.onclick = function() { cancelInput(requestId); };
+  btns.appendChild(cancelBtn);
+
+  var submitBtn = document.createElement('button');
+  submitBtn.className = 'btn btn-save';
+  submitBtn.textContent = 'Submit';
+  submitBtn.onclick = function() { submitInput(requestId); };
+  btns.appendChild(submitBtn);
+
+  modal.appendChild(btns);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+}
+
+function submitInput(requestId) {
+  var modal = document.getElementById('inputModal');
+  if (!modal) return;
+
+  // Prevent double-click
+  var btns = modal.querySelectorAll('button');
+  btns.forEach(function(b) { b.disabled = true; });
+
+  var inputs = modal.querySelectorAll('input[data-field-name]');
+  var response = {};
+  var displayParts = [];
+
+  inputs.forEach(function(input) {
+    var name = input.getAttribute('data-field-name');
+    var type = input.getAttribute('data-field-type');
+    response[name] = input.value;
+    displayParts.push(name + ': ' + (type === 'password' ? '***' : input.value));
+  });
+
+  fetch('/v1/agent/' + agentId + '/input', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId: requestId, response: response }),
+  }).then(function() {
+    addMsg('system', '已提交: ' + displayParts.join(', '));
+    modal.remove();
+  }).catch(function(err) {
+    addMsg('error', '提交失败: ' + err.message);
+    btns.forEach(function(b) { b.disabled = false; });
+  });
+}
+
+function cancelInput(requestId) {
+  var modal = document.getElementById('inputModal');
+  if (!modal) return;
+
+  fetch('/v1/agent/' + agentId + '/input', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId: requestId, response: { error: '用户取消了输入' } }),
+  }).catch(function() {});
+
+  addMsg('system', '已取消输入');
+  modal.remove();
 }
 
 // ========== Keyboard ==========

@@ -217,6 +217,35 @@ interface ElementHandle {
 
 操作时优先使用 backendNodeId 定位，semanticId 用于展示和日志。
 
+### 3.5 内容提取器 (ContentExtractor)
+
+提取页面文本内容，并为每个内容块计算注意力分值，模拟人类浏览网页时的注意力分布。
+
+```
+页面 DOM
+    ↓
+遍历块级内容节点 (h1-h6, p, li, blockquote, td, pre 等)
+    ↓
+过滤隐藏/不可见元素
+    ↓
+对每个节点计算四维注意力分值
+    ↓
+按 attention 降序排列，截取前 50 个
+    ↓
+输出 ContentSection[]
+```
+
+四维注意力模型：
+
+| 维度 | 权重 | 说明 |
+|------|------|------|
+| 位置 (position) | 0.35 | 元素中心到视口中心的距离；首屏加分 |
+| 面积 (area) | 0.25 | 元素占视口面积比例 |
+| 字号 (fontSize) | 0.15 | 相对于页面最大字号的比例 |
+| 语义 (semantic) | 0.25 | 按 HTML 标签固定分值 |
+
+详细数据结构见 `04-data-structures.md` 第 6 节。
+
 ### 4. 状态追踪器 (StateTracker)
 
 追踪页面状态变化：

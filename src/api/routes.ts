@@ -13,6 +13,7 @@ import {
 import { ApiError, ErrorCode } from './errors.js';
 import { BrowsingAgent } from '../agent/agent-loop.js';
 import { createBrowserMcpServer } from '../mcp/browser-mcp-server.js';
+import { CookieStore } from '../browser/CookieStore.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
@@ -582,6 +583,8 @@ export function registerRoutes(
     cleanupTimer?: ReturnType<typeof setTimeout>;
   }
   const runningAgents = new Map<string, AgentEntry>();
+  // 进程级 CookieStore，跨 agent 共享，保持登录状态
+  const cookieStore = new CookieStore();
 
   app.post('/v1/agent/run', async (request) => {
     const { task, apiKey, baseURL, model, messages, maxIterations } = request.body as any;
@@ -597,7 +600,7 @@ export function registerRoutes(
     }
 
     // Create MCP Server + InMemoryTransport + MCP Client
-    const mcpServer = createBrowserMcpServer(sessionManager);
+    const mcpServer = createBrowserMcpServer(sessionManager, cookieStore);
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await mcpServer.connect(serverTransport);
     const mcpClient = new Client({ name: 'agent', version: '0.1.0' });
@@ -696,5 +699,27 @@ export function registerRoutes(
     request.raw.on('close', () => {
       entry.agent.removeListener('event', onEvent);
     });
+  });
+
+  // ========== Agent Input (ask_human response) ==========
+  app.post('/v1/agent/:agentId/input', async (request) => {
+    const { agentId: aid } = request.params as any;
+    const { requestId, response } = request.body as any;
+
+    if (!requestId || !response || typeof response !== 'object') {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, 'requestId and response are required', 400);
+    }
+
+    const entry = runningAgents.get(aid);
+    if (!entry) {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, 'Agent not found', 404);
+    }
+
+    const resolved = entry.agent.resolveInput(requestId, response);
+    if (!resolved) {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, 'No pending input with this requestId', 400);
+    }
+
+    return { success: true };
   });
 }

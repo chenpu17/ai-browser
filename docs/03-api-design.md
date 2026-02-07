@@ -282,12 +282,22 @@ GET /v1/sessions/{sessionId}/content
 ```json
 {
   "content": {
-    "type": "article",
     "title": "文章标题",
-    "body": "文章正文内容...",
+    "sections": [
+      { "tag": "h1", "text": "文章标题", "attention": 0.82 },
+      { "tag": "p", "text": "核心段落内容...", "attention": 0.65 },
+      { "tag": "p", "text": "次要段落内容...", "attention": 0.42 },
+      { "tag": "li", "text": "侧边栏项目", "attention": 0.25 }
+    ],
+    "links": [
+      { "text": "相关链接", "url": "https://example.com/related" }
+    ],
+    "images": [
+      { "alt": "配图", "src": "https://example.com/img.jpg" }
+    ],
     "metadata": {
       "author": "作者",
-      "date": "2026-02-05"
+      "description": "文章摘要"
     }
   }
 }

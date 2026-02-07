@@ -138,7 +138,64 @@ interface ModalInfo {
 }
 ```
 
-### 6. 模型扩展接口
+### 6. 内容块与注意力分值 (ContentSection)
+
+ContentExtractor 提取页面内容时，将页面拆分为带注意力分值的内容块，模拟人类浏览网页时的注意力分布。
+
+```typescript
+interface ContentSection {
+  // 语义标签：h1, h2, p, li, blockquote 等
+  tag: string;
+
+  // 文本内容（最长 500 字符）
+  text: string;
+
+  // 注意力分值 0-1，越高表示越值得关注
+  attention: number;
+}
+```
+
+#### 6.1 ExtractedContent 结构
+
+```typescript
+interface ExtractedContent {
+  title: string;
+  sections: ContentSection[];  // 按 attention 降序排列，最多 50 个
+  links: Array<{ text: string; url: string }>;
+  images: Array<{ alt: string; src: string }>;
+  metadata: Record<string, string>;
+}
+```
+
+#### 6.2 注意力计算算法
+
+对每个块级内容节点（h1-h6, p, li, blockquote, td, pre 等），综合四个维度计算注意力分值：
+
+```
+attention = 0.35 * positionScore
+          + 0.25 * areaScore
+          + 0.15 * fontSizeScore
+          + 0.25 * semanticScore
+```
+
+| 维度 | 权重 | 计算方式 |
+|------|------|----------|
+| 位置 | 0.35 | 元素中心到视口中心的距离，越近分越高；首屏内额外 +0.2 |
+| 面积 | 0.25 | `width * height / viewportArea`，归一化到 0-1 |
+| 字号 | 0.15 | `fontSize / maxFontSize`，归一化到 0-1 |
+| 语义 | 0.25 | 按标签固定分：h1=1.0, h2=0.85, h3=0.7, blockquote=0.6, p=0.5, li=0.4, td=0.3 |
+
+#### 6.3 注意力等级标记
+
+Agent 向 LLM 输出时，将数值分值转换为直观的星级标记：
+
+| 分值范围 | 标记 | 含义 |
+|----------|------|------|
+| >= 0.7 | ★★★ | 高关注：标题、核心段落 |
+| >= 0.4 | ★★ | 中等关注：正文内容 |
+| < 0.4 | ★ | 低关注：边栏、页脚等 |
+
+### 7. 模型扩展接口
 
 支持接入外部模型增强语义理解：
 

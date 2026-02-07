@@ -89,13 +89,13 @@ describe('MCP Browser Server', () => {
   });
 
   // Scenario 4: listTools returns all expected tools
-  it('Scenario 4: listTools discovers all 11 tools', async () => {
+  it('Scenario 4: listTools discovers all 12 tools', async () => {
     const { tools } = await mcpClient.listTools();
     const names = tools.map(t => t.name).sort();
     expect(names).toEqual([
       'click', 'close_session', 'create_session',
       'find_element', 'get_page_content', 'get_page_info',
-      'go_back', 'navigate', 'scroll', 'type_text', 'wait',
+      'go_back', 'navigate', 'press_key', 'scroll', 'type_text', 'wait',
     ]);
   });
 
@@ -199,7 +199,8 @@ describe('MCP Browser Server', () => {
       arguments: { sessionId },
     });
     const content = parseResult(contentRes);
-    expect(content.text || JSON.stringify(content)).toContain('Article Title');
+    const allText = (content.sections || []).map((s: any) => s.text).join(' ');
+    expect(allText).toContain('Article Title');
 
     await mcpClient.callTool({ name: 'close_session', arguments: { sessionId } });
   });

@@ -1,10 +1,11 @@
 import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import OpenAI from 'openai';
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions.js';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { config } from './config.js';
 import { SYSTEM_PROMPT } from './prompt.js';
-import type { AgentState, AgentRunResult, AgentEvent } from './types.js';
+import type { AgentState, AgentRunResult, AgentEvent, InputField } from './types.js';
 
 const MAX_CONTENT_LENGTH = 4000;
 
@@ -33,7 +34,16 @@ function formatForLLM(rawText: string, toolName: string): string {
       return truncate(JSON.stringify(summary, null, 2));
     }
     if (toolName === 'get_page_content') {
-      return truncate(JSON.stringify(data, null, 2));
+      let md = `# ${data.title || ''}\n\n`;
+      const sections = Array.isArray(data.sections) ? data.sections : [];
+      for (const s of sections) {
+        const stars = s.attention >= 0.7 ? '★★★'
+                   : s.attention >= 0.4 ? '★★'
+                   : '★';
+        md += `[${stars}] ${s.text}\n\n`;
+      }
+      if (sections.length === 0) md += '(未提取到内容)\n';
+      return truncate(md);
     }
     return truncate(JSON.stringify(data));
   } catch {
@@ -52,6 +62,8 @@ export class BrowsingAgent extends EventEmitter {
   private tools: ChatCompletionTool[] = [];
   private recentToolCalls: string[] = []; // 循环检测：记录最近工具调用签名
   private stepWarningInjected = false;
+  private pendingInputResolve: ((response: Record<string, string>) => void) | null = null;
+  private pendingInputRequestId: string | null = null;
 
   constructor(options: {
     apiKey?: string;
@@ -81,6 +93,21 @@ export class BrowsingAgent extends EventEmitter {
 
   get sessionId(): string {
     return this.state.sessionId;
+  }
+
+  resolveInput(requestId: string, response: Record<string, string>): boolean {
+    if (this.pendingInputRequestId !== requestId || !this.pendingInputResolve) {
+      return false;
+    }
+    // Clear the timeout timer to prevent resource leak
+    if ((this as any)._askHumanTimer) {
+      clearTimeout((this as any)._askHumanTimer);
+      (this as any)._askHumanTimer = null;
+    }
+    this.pendingInputResolve(response);
+    this.pendingInputResolve = null;
+    this.pendingInputRequestId = null;
+    return true;
   }
 
   private emitEvent(event: AgentEvent): void {
@@ -113,6 +140,33 @@ export class BrowsingAgent extends EventEmitter {
             result: { type: 'string', description: '任务的最终结果描述' },
           },
           required: ['result'],
+        },
+      },
+    });
+    // Add the 'ask_human' tool for requesting user input (e.g. login credentials)
+    this.tools.push({
+      type: 'function',
+      function: {
+        name: 'ask_human',
+        description: '向用户请求信息（如登录凭据）。调用后会暂停等待用户输入。',
+        parameters: {
+          type: 'object',
+          properties: {
+            question: { type: 'string', description: '向用户提出的问题' },
+            fields: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  label: { type: 'string' },
+                  type: { type: 'string', enum: ['text', 'password'] },
+                },
+                required: ['name', 'label', 'type'],
+              },
+            },
+          },
+          required: ['question', 'fields'],
         },
       },
     });
@@ -277,6 +331,48 @@ export class BrowsingAgent extends EventEmitter {
         console.log(`[Agent] 任务完成: ${result}`);
         this.state.done = true;
         return { success: true, result, iterations: this.state.iteration };
+      }
+
+      // ask_human: 暂停等待用户输入
+      if (name === 'ask_human') {
+        const requestId = randomUUID();
+        const question: string = args.question || '';
+        const fields: InputField[] = args.fields || [];
+        const passwordFieldNames = new Set(fields.filter(f => f.type === 'password').map(f => f.name));
+        console.log(`[Agent] 请求用户输入: ${question}`);
+        this.pendingInputRequestId = requestId;
+        this.emitEvent({ type: 'input_required', requestId, question, fields });
+
+        let userResponse: Record<string, string>;
+        try {
+          userResponse = await new Promise<Record<string, string>>((resolve, reject) => {
+            this.pendingInputResolve = resolve;
+            const timer = setTimeout(() => {
+              if (this.pendingInputResolve) {
+                this.pendingInputResolve = null;
+                this.pendingInputRequestId = null;
+                reject(new Error('用户未响应'));
+              }
+            }, 5 * 60 * 1000);
+            // Store timer ref so resolveInput can clear it
+            (this as any)._askHumanTimer = timer;
+          });
+        } catch {
+          userResponse = { error: '用户未在规定时间内响应' };
+        }
+
+        // Build redacted version for SSE event (mask password values)
+        const redacted: Record<string, string> = {};
+        for (const [k, v] of Object.entries(userResponse)) {
+          redacted[k] = passwordFieldNames.has(k) ? '***' : v;
+        }
+        const redactedText = JSON.stringify(redacted);
+        const responseText = JSON.stringify(userResponse);
+
+        console.log(`[Agent] 用户输入已收到`);
+        this.emitEvent({ type: 'tool_result', name: 'ask_human', success: true, summary: redactedText, iteration: this.state.iteration });
+        this.messages.push({ role: 'tool', tool_call_id: toolCall.id, content: responseText });
+        continue;
       }
 
       // 强制覆盖 sessionId，防止 LLM 猜测错误的值

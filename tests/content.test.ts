@@ -24,7 +24,9 @@ describe('ContentExtractor', () => {
 
     const content = await contentExtractor.extract(page);
     expect(content.title).toBe('Test Article');
-    expect(content.text).toContain('Article Title');
+    expect(Array.isArray(content.sections)).toBe(true);
+    const allText = content.sections.map((s: any) => s.text).join(' ');
+    expect(allText).toContain('Article Title');
     await page.close();
   });
 });

@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { SessionManager } from '../browser/index.js';
+import { CookieStore } from '../browser/CookieStore.js';
 import { executeAction } from '../browser/actions.js';
 import {
   ElementCollector,
@@ -10,7 +11,7 @@ import {
   ElementMatcher,
 } from '../semantic/index.js';
 
-export function createBrowserMcpServer(sessionManager: SessionManager): McpServer {
+export function createBrowserMcpServer(sessionManager: SessionManager, cookieStore?: CookieStore): McpServer {
   const server = new McpServer(
     { name: 'browser-mcp-server', version: '0.1.0' },
     { capabilities: { tools: {} } }
@@ -90,12 +91,19 @@ export function createBrowserMcpServer(sessionManager: SessionManager): McpServe
       } catch {
         throw new Error('Invalid URL format');
       }
-      const allowedProtocols = ['http:', 'https:'];
+      const allowedProtocols = ['http:', 'https:', 'file:'];
       if (!allowedProtocols.includes(parsedUrl.protocol)) {
-        throw new Error('Only http/https URLs allowed');
+        throw new Error('Only http/https/file URLs allowed');
       }
 
       const tab = getActiveTab(sessionId);
+      // 导航前注入已保存的 cookies
+      if (cookieStore) {
+        const savedCookies = cookieStore.getForUrl(url);
+        if (savedCookies.length > 0) {
+          await tab.page.setCookie(...savedCookies as any[]);
+        }
+      }
       let partial = false;
       try {
         await tab.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -114,6 +122,13 @@ export function createBrowserMcpServer(sessionManager: SessionManager): McpServe
         // 忽略超时，不阻塞
       }
       tab.url = tab.page.url();
+      // 导航后保存 cookies
+      if (cookieStore) {
+        try {
+          const cookies = await tab.page.cookies();
+          cookieStore.save(tab.page.url(), cookies as any[]);
+        } catch {}
+      }
       sessionManager.updateActivity(sessionId);
       let title = '';
       try { title = await tab.page.title(); } catch { title = '(无法获取标题)'; }
@@ -177,6 +192,12 @@ export function createBrowserMcpServer(sessionManager: SessionManager): McpServe
       const tab = getActiveTab(sessionId);
       await executeAction(tab.page, 'click', element_id);
       tab.url = tab.page.url();
+      if (cookieStore) {
+        try {
+          const cookies = await tab.page.cookies();
+          cookieStore.save(tab.page.url(), cookies as any[]);
+        } catch {}
+      }
       sessionManager.updateActivity(sessionId);
       return textResult({
         success: true,
@@ -203,6 +224,12 @@ export function createBrowserMcpServer(sessionManager: SessionManager): McpServe
           tab.page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 5000 }).catch(() => {}),
           tab.page.keyboard.press('Enter'),
         ]);
+      }
+      if (cookieStore) {
+        try {
+          const cookies = await tab.page.cookies();
+          cookieStore.save(tab.page.url(), cookies as any[]);
+        } catch {}
       }
       sessionManager.updateActivity(sessionId);
       return textResult({

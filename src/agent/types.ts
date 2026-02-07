@@ -1,3 +1,9 @@
+export interface InputField {
+  name: string;
+  label: string;
+  type: 'text' | 'password';
+}
+
 export interface AgentState {
   sessionId: string;
   iteration: number;
@@ -24,4 +30,5 @@ export type AgentEvent =
   | { type: 'tool_call'; name: string; args: Record<string, any>; iteration: number }
   | { type: 'tool_result'; name: string; success: boolean; summary: string; iteration: number }
   | { type: 'done'; success: boolean; result?: string; error?: string; iterations: number }
-  | { type: 'error'; message: string; iteration: number };
+  | { type: 'error'; message: string; iteration: number }
+  | { type: 'input_required'; requestId: string; question: string; fields: InputField[] };
