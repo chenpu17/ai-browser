@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.env
+tests/scenario-results.json
+tests/stress-test-report.json
+scripts/*.png
+.claude/

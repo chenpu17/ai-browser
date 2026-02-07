@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Browser - Agent</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ===== Header ===== */
+    .header {
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .header h1 { color: #58a6ff; font-size: 16px; white-space: nowrap; }
+    .header-right { display: flex; gap: 8px; margin-left: auto; }
+    .btn {
+      padding: 6px 16px;
+      font-size: 13px;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.15s;
+      background: #21262d;
+      color: #c9d1d9;
+    }
+    .btn:hover { border-color: #58a6ff; color: #58a6ff; }
+    .btn-stop { border-color: #da3633; color: #da3633; display: none; }
+    .btn-stop:hover { background: #da3633; color: #fff; }
+
+    /* ===== Main layout ===== */
+    .main { display: flex; flex: 1; overflow: hidden; }
+
+    /* ===== Left: Chat panel ===== */
+    .chat-panel {
+      width: 50%;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #30363d;
+    }
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+    .chat-input-bar {
+      border-top: 1px solid #30363d;
+      padding: 12px 16px;
+      display: flex;
+      gap: 8px;
+      background: #161b22;
+    }
+    .chat-input-bar input {
+      flex: 1;
+      padding: 10px 14px;
+      font-size: 14px;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      background: #0d1117;
+      color: #c9d1d9;
+      outline: none;
+    }
+    .chat-input-bar input:focus { border-color: #58a6ff; }
+    .btn-send {
+      padding: 10px 20px;
+      background: #238636;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-send:hover { background: #2ea043; }
+    .btn-send:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+
+    /* ===== Right: Preview panel ===== */
+    .preview-panel {
+      width: 50%;
+      display: flex;
+      flex-direction: column;
+    }
+    .preview-header {
+      background: #161b22;
+      padding: 8px 16px;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .preview-tabs { display: flex; gap: 4px; }
+    .preview-tab {
+      padding: 4px 14px;
+      font-size: 12px;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      background: transparent;
+      color: #8b949e;
+      cursor: pointer;
+    }
+    .preview-tab.active { background: #21262d; color: #58a6ff; border-color: #58a6ff; }
+    .preview-url {
+      font-size: 12px;
+      color: #58a6ff;
+      margin-left: auto;
+      max-width: 50%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .preview-body {
+      flex: 1;
+      overflow: auto;
+      background: #0d1117;
+    }
+    .preview-body.screenshot-mode {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #010409;
+      padding: 12px;
+    }
+    .preview-body img {
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 4px;
+      border: 1px solid #30363d;
+    }
+    .preview-placeholder {
+      color: #484f58;
+      font-size: 14px;
+      text-align: center;
+      padding: 40px;
+    }
+
+    /* Markdown area */
+    .md-current {
+      padding: 16px;
+    }
+    .md-current .markdown-body {
+      background: transparent !important;
+      color: #c9d1d9 !important;
+    }
+    .md-current .markdown-body pre { background: #161b22 !important; }
+    .md-current .markdown-body code { background: #21262d !important; }
+
+    .md-history {
+      border-top: 1px solid #30363d;
+      padding: 8px 16px;
+    }
+    .md-history-item {
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      margin-bottom: 6px;
+      overflow: hidden;
+    }
+    .md-history-toggle {
+      width: 100%;
+      padding: 8px 12px;
+      background: #161b22;
+      border: none;
+      color: #8b949e;
+      font-size: 12px;
+      cursor: pointer;
+      text-align: left;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .md-history-toggle:hover { color: #c9d1d9; }
+    .md-history-toggle .arrow { transition: transform 0.2s; }
+    .md-history-toggle.open .arrow { transform: rotate(90deg); }
+    .md-history-content {
+      display: none;
+      padding: 12px;
+      max-height: 300px;
+      overflow: auto;
+    }
+    .md-history-content.open { display: block; }
+    .md-history-content .markdown-body {
+      background: transparent !important;
+      color: #c9d1d9 !important;
+      font-size: 13px;
+    }
+    .md-history-content .markdown-body pre { background: #161b22 !important; }
+    .md-history-content .markdown-body code { background: #21262d !important; }
+
+    /* ===== Chat message styles ===== */
+    .msg { margin-bottom: 10px; }
+    .msg-user { text-align: right; }
+    .msg-user .bubble {
+      display: inline-block;
+      background: #1f6feb;
+      color: #fff;
+      padding: 8px 14px;
+      border-radius: 12px 12px 2px 12px;
+      max-width: 85%;
+      text-align: left;
+      font-size: 14px;
+    }
+    .msg-system {
+      text-align: center;
+      color: #484f58;
+      font-size: 12px;
+      padding: 4px 0;
+    }
+    .msg-thinking {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: #8b949e;
+      font-style: italic;
+    }
+    .msg-thinking .markdown-body,
+    .msg-tool-result .markdown-body {
+      background: transparent !important;
+      color: #c9d1d9 !important;
+      font-size: 13px;
+    }
+    .msg-tool-result .markdown-body pre { background: #161b22 !important; }
+    .msg-tool-result .markdown-body code { background: #21262d !important; }
+    .msg-tool-result .markdown-body table { font-size: 12px; }
+    .msg .md-inline { font-style: normal; }
+    .msg-tool-call {
+      background: #0d1117;
+      border: 1px solid #1f6feb;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+    .msg-tool-call .label { color: #58a6ff; font-weight: 600; }
+    .msg-tool-call pre {
+      margin: 4px 0 0;
+      color: #c9d1d9;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .msg-tool-result {
+      background: #0d1117;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      max-height: 300px;
+      overflow: auto;
+    }
+    .msg-tool-result.success { border: 1px solid #238636; }
+    .msg-tool-result.fail { border: 1px solid #da3633; }
+    .msg-tool-result pre {
+      margin: 4px 0 0;
+      color: #8b949e;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 150px;
+      overflow: auto;
+    }
+    .msg-error {
+      background: #1c0c0c;
+      border: 1px solid #da3633;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: #fca5a5;
+    }
+    .msg-done {
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 14px;
+    }
+    .msg-done.success { background: #0a2e1a; border: 2px solid #238636; }
+    .msg-done.fail { background: #2d0a0a; border: 2px solid #da3633; }
+    .msg-done .title { font-weight: 700; margin-bottom: 4px; }
+    .msg-done .markdown-body {
+      background: transparent !important;
+      color: #c9d1d9 !important;
+      font-size: 14px;
+    }
+    .msg-thinking .markdown-body {
+      font-style: normal;
+    }
+    .step-tag {
+      display: inline-block;
+      background: #21262d;
+      color: #8b949e;
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: 3px;
+      margin-right: 6px;
+      font-style: normal;
+    }
+
+    /* ===== Settings modal ===== */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 24px;
+      width: 440px;
+    }
+    .modal h2 { font-size: 16px; color: #c9d1d9; margin-bottom: 16px; }
+    .modal label {
+      display: block;
+      font-size: 13px;
+      color: #8b949e;
+      margin-bottom: 4px;
+      margin-top: 12px;
+    }
+    .modal label:first-of-type { margin-top: 0; }
+    .modal input {
+      width: 100%;
+      padding: 8px 12px;
+      font-size: 14px;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      background: #0d1117;
+      color: #c9d1d9;
+      outline: none;
+    }
+    .modal input:focus { border-color: #58a6ff; }
+    .modal-btns {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 20px;
+    }
+    .btn-save { background: #238636; color: #fff; border-color: #238636; }
+    .btn-save:hover { background: #2ea043; color: #fff; }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>AI Browser Agent</h1>
+  <div class="header-right">
+    <button class="btn btn-stop" id="stopBtn" onclick="stopAgent()">Stop</button>
+    <button class="btn" onclick="clearChat()">Clear</button>
+    <button class="btn" onclick="openSettings()">Settings</button>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <!-- Left: Chat -->
+  <div class="chat-panel">
+    <div class="chat-messages" id="chatMessages">
+      <div class="preview-placeholder">输入任务开始对话</div>
+    </div>
+    <div class="chat-input-bar">
+      <input type="text" id="taskInput" placeholder="输入任务，例如：打开百度搜索天气预报">
+      <button class="btn-send" id="sendBtn" onclick="startAgent()">Send</button>
+    </div>
+  </div>
+
+  <!-- Right: Preview -->
+  <div class="preview-panel">
+    <div class="preview-header">
+      <div class="preview-tabs">
+        <button class="preview-tab active" id="tabMd" onclick="switchPreview('markdown')">Markdown</button>
+        <button class="preview-tab" id="tabSs" onclick="switchPreview('screenshot')">Screenshot</button>
+      </div>
+      <span class="preview-url" id="previewUrl"></span>
+    </div>
+    <div class="preview-body" id="previewBody">
+      <div class="preview-placeholder">等待 Agent 返回内容...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay hidden" id="settingsModal">
+  <div class="modal">
+    <h2>Model Settings</h2>
+    <label>Base URL</label>
+    <input type="text" id="cfgBaseURL" placeholder="https://api.openai.com/v1">
+    <label>Model</label>
+    <input type="text" id="cfgModel" placeholder="gpt-4">
+    <label>API Key</label>
+    <input type="password" id="cfgApiKey" placeholder="sk-...">
+    <label>Max Iterations</label>
+    <input type="number" id="cfgMaxIterations" placeholder="100" min="1" max="1000">
+    <div class="modal-btns">
+      <button class="btn" onclick="closeSettings()">Cancel</button>
+      <button class="btn btn-save" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== State ==========
+let agentId = null;
+let sessionId = null;
+let eventSource = null;
+let previewMode = 'markdown'; // 'markdown' | 'screenshot'
+let mdHistory = [];           // max 10
+const MAX_HISTORY = 10;
+let currentMdContent = null;
+let latestScreenshotHtml = '';
+let conversationHistory = [];  // conversation memory
+let currentTask = '';          // track current task for memory
+
+// ========== Settings (localStorage) ==========
+const SETTINGS_KEY = 'ai_browser_agent_settings';
+
+function loadSettings() {
+  try {
+    return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
+  } catch { return {}; }
+}
+
+function getSettings() {
+  return loadSettings();
+}
+
+function openSettings() {
+  const s = loadSettings();
+  document.getElementById('cfgBaseURL').value = s.baseURL || '';
+  document.getElementById('cfgModel').value = s.model || '';
+  document.getElementById('cfgApiKey').value = s.apiKey || '';
+  document.getElementById('cfgMaxIterations').value = s.maxIterations || 100;
+  document.getElementById('settingsModal').classList.remove('hidden');
+}
+
+function closeSettings() {
+  document.getElementById('settingsModal').classList.add('hidden');
+}
+
+function saveSettings() {
+  const settings = {
+    baseURL: document.getElementById('cfgBaseURL').value.trim(),
+    model: document.getElementById('cfgModel').value.trim(),
+    apiKey: document.getElementById('cfgApiKey').value.trim(),
+    maxIterations: parseInt(document.getElementById('cfgMaxIterations').value) || 100,
+  };
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  closeSettings();
+}
+
+// ========== Preview mode ==========
+function switchPreview(mode) {
+  previewMode = mode;
+  document.getElementById('tabMd').classList.toggle('active', mode === 'markdown');
+  document.getElementById('tabSs').classList.toggle('active', mode === 'screenshot');
+  renderPreview();
+}
+
+function renderPreview() {
+  const body = document.getElementById('previewBody');
+  if (previewMode === 'screenshot') {
+    body.className = 'preview-body screenshot-mode';
+    if (latestScreenshotHtml) {
+      body.innerHTML = latestScreenshotHtml;
+    } else {
+      body.innerHTML = '<div class="preview-placeholder">等待截图...</div>';
+    }
+  } else {
+    body.className = 'preview-body';
+    renderMarkdownPreview(body);
+  }
+}
+
+function renderMarkdownPreview(container) {
+  if (!currentMdContent && mdHistory.length === 0) {
+    container.innerHTML = '<div class="preview-placeholder">等待 Agent 返回内容...</div>';
+    return;
+  }
+
+  let html = '';
+
+  // Current content
+  if (currentMdContent) {
+    html += '<div class="md-current"><div class="markdown-body">' +
+      safeMd(currentMdContent.content) + '</div></div>';
+  }
+
+  // History (collapsed)
+  if (mdHistory.length > 0) {
+    html += '<div class="md-history">';
+    html += '<div style="color:#484f58;font-size:11px;margin-bottom:6px;">History (' + mdHistory.length + ')</div>';
+    for (let i = mdHistory.length - 1; i >= 0; i--) {
+      const item = mdHistory[i];
+      const id = 'hist_' + i;
+      html += '<div class="md-history-item">' +
+        '<button class="md-history-toggle" onclick="toggleHistory(\'' + id + '\', this)">' +
+        '<span class="arrow">&#9654;</span> ' +
+        '<span>' + esc(item.label) + '</span></button>' +
+        '<div class="md-history-content" id="' + id + '">' +
+        '<div class="markdown-body">' + safeMd(item.content) + '</div></div></div>';
+    }
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+function toggleHistory(id, btn) {
+  const el = document.getElementById(id);
+  const isOpen = el.classList.contains('open');
+  el.classList.toggle('open');
+  btn.classList.toggle('open');
+}
+
+function pushMdContent(label, content) {
+  // Move current to history
+  if (currentMdContent) {
+    mdHistory.push(currentMdContent);
+    if (mdHistory.length > MAX_HISTORY) mdHistory.shift();
+  }
+  currentMdContent = { label: label, content: content };
+  if (previewMode === 'markdown') renderPreview();
+}
+
+// ========== Agent lifecycle ==========
+async function startAgent() {
+  const task = document.getElementById('taskInput').value.trim();
+  if (!task) return;
+
+  const settings = getSettings();
+
+  // Reset right panel only (keep chat history)
+  currentMdContent = null;
+  mdHistory = [];
+  latestScreenshotHtml = '';
+  document.getElementById('previewUrl').textContent = '';
+  renderPreview();
+
+  // Remove placeholder if present
+  var ph = document.getElementById('chatMessages').querySelector('.preview-placeholder');
+  if (ph) ph.remove();
+
+  document.getElementById('sendBtn').disabled = true;
+  document.getElementById('stopBtn').style.display = 'inline-block';
+  document.getElementById('taskInput').value = '';
+
+  addMsg('user', task);
+  currentTask = task;
+
+  try {
+    const body = { task: task };
+    if (settings.apiKey) body.apiKey = settings.apiKey;
+    if (settings.baseURL) body.baseURL = settings.baseURL;
+    if (settings.model) body.model = settings.model;
+    if (settings.maxIterations) body.maxIterations = settings.maxIterations;
+    if (conversationHistory.length > 0) body.messages = conversationHistory;
+
+    const res = await fetch('/v1/agent/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!data.agentId) throw new Error(data.error?.message || 'Failed to start agent');
+
+    agentId = data.agentId;
+    connectSSE(agentId);
+  } catch (err) {
+    addMsg('error', err.message);
+    resetUI();
+  }
+}
+
+function stopAgent() {
+  if (eventSource) { eventSource.close(); eventSource = null; }
+  addMsg('system', 'Agent stopped');
+  resetUI();
+}
+
+function resetUI() {
+  document.getElementById('sendBtn').disabled = false;
+  document.getElementById('stopBtn').style.display = 'none';
+  agentId = null;
+}
+
+function clearChat() {
+  if (eventSource) { eventSource.close(); eventSource = null; }
+  document.getElementById('chatMessages').innerHTML = '<div class="preview-placeholder">输入任务开始对话</div>';
+  currentMdContent = null;
+  mdHistory = [];
+  latestScreenshotHtml = '';
+  sessionId = null;
+  conversationHistory = [];
+  currentTask = '';
+  document.getElementById('previewUrl').textContent = '';
+  renderPreview();
+  resetUI();
+}
+
+// ========== SSE ==========
+function connectSSE(id) {
+  eventSource = new EventSource('/v1/agent/' + id + '/events');
+  eventSource.onmessage = function(e) {
+    handleEvent(JSON.parse(e.data));
+  };
+  eventSource.onerror = function() {
+    eventSource.close();
+    eventSource = null;
+  };
+}
+
+function handleEvent(ev) {
+  switch (ev.type) {
+    case 'session_created':
+      sessionId = ev.sessionId;
+      addMsg('system', 'Session created');
+      refreshScreenshot();
+      break;
+    case 'thinking':
+      addMsg('thinking', ev.content, ev.iteration);
+      break;
+    case 'tool_call':
+      addMsg('tool_call', ev.name, ev.iteration, ev.args);
+      break;
+    case 'tool_result':
+      addMsg('tool_result', ev.summary, ev.iteration, ev.success, ev.name);
+      // Push to markdown preview
+      pushMdContent(
+        'Step ' + ev.iteration + ' - ' + ev.name,
+        formatMdResult(ev.name, ev.summary)
+      );
+      refreshScreenshot();
+      break;
+    case 'error':
+      addMsg('error', ev.message, ev.iteration);
+      break;
+    case 'done':
+      addMsg('done', ev.success ? (ev.result || 'Done') : (ev.error || 'Failed'), null, ev.success);
+      addMsg('system', 'Total steps: ' + ev.iterations);
+      // Save conversation memory
+      if (currentTask) {
+        conversationHistory.push({ role: 'user', content: currentTask });
+        conversationHistory.push({ role: 'assistant', content: ev.result || ev.error || 'Done' });
+        // Cap history to prevent unbounded growth
+        var MAX_CONV_HISTORY = 20;
+        if (conversationHistory.length > MAX_CONV_HISTORY) {
+          conversationHistory = conversationHistory.slice(-MAX_CONV_HISTORY);
+        }
+        currentTask = '';
+      }
+      refreshScreenshot();
+      resetUI();
+      if (eventSource) { eventSource.close(); eventSource = null; }
+      break;
+  }
+}
+
+function formatMdResult(toolName, summary) {
+  // Try to parse JSON and format nicely
+  try {
+    const obj = JSON.parse(summary);
+    if (toolName === 'get_page_info' && obj.elements) {
+      let md = '## Page: ' + (obj.page?.title || '') + '\n\n';
+      md += '**URL:** ' + (obj.page?.url || '') + '\n\n';
+      md += '**Elements:** ' + obj.elementCount + '\n\n';
+      md += '| ID | Type | Label |\n|---|---|---|\n';
+      (obj.elements || []).forEach(function(el) {
+        md += '| `' + el.id + '` | ' + el.type + ' | ' + (el.label || '-') + ' |\n';
+      });
+      return md;
+    }
+    if (toolName === 'get_page_content') {
+      return '## Page Content\n\n```\n' + (obj.text || JSON.stringify(obj, null, 2)) + '\n```';
+    }
+    if (toolName === 'navigate') {
+      return '## Navigate\n\n**URL:** ' + (obj.page?.url || '') + '\n\n**Title:** ' + (obj.page?.title || '');
+    }
+    if (toolName === 'find_element') {
+      let md = '## Find Element: ' + (obj.query || '') + '\n\n';
+      if (obj.candidates && obj.candidates.length > 0) {
+        md += '| ID | Label | Score |\n|---|---|---|\n';
+        obj.candidates.forEach(function(c) {
+          md += '| `' + c.id + '` | ' + (c.label || '-') + ' | ' + c.score + ' |\n';
+        });
+      } else {
+        md += 'No matches found.';
+      }
+      return md;
+    }
+    // Default: pretty JSON
+    return '## ' + toolName + '\n\n```json\n' + JSON.stringify(obj, null, 2) + '\n```';
+  } catch (e) {
+    return '## ' + toolName + '\n\n```\n' + summary + '\n```';
+  }
+}
+
+// ========== Screenshot ==========
+async function refreshScreenshot() {
+  if (!sessionId) return;
+  try {
+    var res = await fetch('/v1/sessions/' + sessionId + '/screenshot');
+    var data = await res.json();
+    if (data.image) {
+      latestScreenshotHtml = '<img src="' + data.image + '" alt="screenshot">';
+    }
+    var infoRes = await fetch('/v1/sessions/' + sessionId);
+    var info = await infoRes.json();
+    if (info.tabs && info.tabs.length > 0) {
+      var tab = info.tabs.find(function(t) { return t.id === info.activeTabId; }) || info.tabs[0];
+      document.getElementById('previewUrl').textContent = tab.url || '';
+    }
+    if (previewMode === 'screenshot') renderPreview();
+  } catch (e) { /* ignore */ }
+}
+
+// ========== Chat messages ==========
+function addMsg(type, content, iteration, extra, extra2) {
+  var container = document.getElementById('chatMessages');
+  // Remove placeholder
+  var ph = container.querySelector('.preview-placeholder');
+  if (ph) ph.remove();
+
+  var el = document.createElement('div');
+  el.className = 'msg';
+
+  switch (type) {
+    case 'user':
+      el.className = 'msg msg-user';
+      el.innerHTML = '<div class="bubble">' + esc(content) + '</div>';
+      break;
+    case 'system':
+      el.className = 'msg msg-system';
+      el.textContent = '— ' + content + ' —';
+      break;
+    case 'thinking':
+      el.className = 'msg msg-thinking';
+      el.innerHTML = stepTag(iteration) + '<div class="md-inline markdown-body">' + safeMd(content || '') + '</div>';
+      break;
+    case 'tool_call':
+      el.className = 'msg msg-tool-call';
+      el.innerHTML = stepTag(iteration) + '<span class="label">' + esc(content) + '</span>' +
+        '<pre>' + esc(JSON.stringify(extra, null, 2)) + '</pre>';
+      break;
+    case 'tool_result':
+      el.className = 'msg msg-tool-result ' + (extra ? 'success' : 'fail');
+      var lbl = extra ? 'Result' : 'Error';
+      var clr = extra ? '#3fb950' : '#f85149';
+      var mdContent = formatMdResult(extra2 || lbl, content);
+      el.innerHTML = stepTag(iteration) +
+        '<span style="color:' + clr + ';font-weight:600;">' + esc(extra2 || lbl) + '</span>' +
+        '<div class="markdown-body">' + safeMd(mdContent) + '</div>';
+      break;
+    case 'error':
+      el.className = 'msg msg-error';
+      el.innerHTML = (iteration ? stepTag(iteration) : '') + 'Error: ' + esc(content);
+      break;
+    case 'done':
+      el.className = 'msg msg-done ' + (extra ? 'success' : 'fail');
+      var title = extra ? 'Task Completed' : 'Task Failed';
+      var tc = extra ? '#3fb950' : '#f85149';
+      el.innerHTML = '<div class="title" style="color:' + tc + '">' + title + '</div>' +
+        '<div class="markdown-body">' + safeMd(content || '') + '</div>';
+      break;
+  }
+
+  container.appendChild(el);
+  container.scrollTop = container.scrollHeight;
+}
+
+function stepTag(n) {
+  if (n == null) return '';
+  return '<span class="step-tag">Step ' + n + '</span>';
+}
+
+function safeMd(s) {
+  return DOMPurify.sanitize(marked.parse(s || ''));
+}
+
+function esc(s) {
+  var d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+// ========== Keyboard ==========
+document.getElementById('taskInput').addEventListener('keypress', function(e) {
+  if (e.key === 'Enter' && !document.getElementById('sendBtn').disabled) startAgent();
+});
+
+// Close modal on overlay click
+document.getElementById('settingsModal').addEventListener('click', function(e) {
+  if (e.target === this) closeSettings();
+});
+</script>
+</body>
+</html>

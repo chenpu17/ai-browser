@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Browser - 语义输出展示</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #0d1117;
+      color: #c9d1d9;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #58a6ff;
+      margin-bottom: 20px;
+    }
+    .input-section {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    input[type="text"] {
+      flex: 1;
+      padding: 12px 16px;
+      font-size: 16px;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      background: #161b22;
+      color: #c9d1d9;
+    }
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #58a6ff;
+    }
+    button {
+      padding: 12px 24px;
+      font-size: 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: #238636;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #2ea043;
+    }
+    .btn-primary:disabled {
+      background: #21262d;
+      color: #484f58;
+      cursor: not-allowed;
+    }
+    .output-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 900px) {
+      .output-container {
+        grid-template-columns: 1fr;
+      }
+    }
+    .panel {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .panel-header {
+      background: #21262d;
+      padding: 12px 16px;
+      border-bottom: 1px solid #30363d;
+      font-weight: 600;
+    }
+    .panel-body {
+      padding: 16px;
+      max-height: 600px;
+      overflow: auto;
+    }
+    .markdown-body {
+      background: transparent !important;
+      color: #c9d1d9 !important;
+    }
+    .markdown-body pre {
+      background: #0d1117 !important;
+    }
+    .markdown-body code {
+      background: #21262d !important;
+    }
+    .raw-output {
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #8b949e;
+    }
+    .status {
+      padding: 10px 16px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+    .status-loading {
+      background: #1f2937;
+      color: #60a5fa;
+    }
+    .status-success {
+      background: #064e3b;
+      color: #34d399;
+    }
+    .status-error {
+      background: #7f1d1d;
+      color: #fca5a5;
+    }
+    .hidden { display: none !important; }
+    .stats {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .stat-card {
+      background: #21262d;
+      padding: 16px 24px;
+      border-radius: 6px;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 28px;
+      font-weight: bold;
+      color: #58a6ff;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: #8b949e;
+      margin-top: 4px;
+    }
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #30363d;
+      padding-bottom: 10px;
+    }
+    .tab {
+      padding: 8px 16px;
+      background: transparent;
+      color: #8b949e;
+      border: 1px solid transparent;
+      border-radius: 6px 6px 0 0;
+    }
+    .tab.active {
+      background: #21262d;
+      color: #58a6ff;
+      border-color: #30363d;
+      border-bottom-color: #21262d;
+    }
+    .tab:hover:not(.active) {
+      color: #c9d1d9;
+    }
+    .element-list {
+      max-height: 500px;
+      overflow-y: auto;
+    }
+    .element-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      background: #0d1117;
+      transition: all 0.2s;
+    }
+    .element-item:hover {
+      border-color: #58a6ff;
+      background: #161b22;
+    }
+    .element-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .element-type {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-right: 8px;
+    }
+    .element-type.button { background: #238636; color: white; }
+    .element-type.link { background: #1f6feb; color: white; }
+    .element-type.textbox { background: #8957e5; color: white; }
+    .element-type.checkbox { background: #f78166; color: white; }
+    .element-label {
+      font-weight: 500;
+      color: #c9d1d9;
+    }
+    .element-id {
+      font-size: 11px;
+      color: #6e7681;
+      font-family: monospace;
+      margin-top: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .element-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .btn-action {
+      padding: 6px 12px;
+      font-size: 12px;
+      background: #21262d;
+      color: #c9d1d9;
+      border: 1px solid #30363d;
+    }
+    .btn-action:hover {
+      background: #30363d;
+      border-color: #58a6ff;
+    }
+    .btn-action.btn-click { border-color: #238636; }
+    .btn-action.btn-click:hover { background: #238636; }
+    .btn-action.btn-type { border-color: #8957e5; }
+    .btn-action.btn-type:hover { background: #8957e5; }
+    .action-log {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 12px;
+      margin-top: 16px;
+    }
+    .log-entry {
+      padding: 4px 0;
+      border-bottom: 1px solid #21262d;
+    }
+    .log-entry:last-child { border-bottom: none; }
+    .log-time { color: #6e7681; }
+    .log-success { color: #3fb950; }
+    .log-error { color: #f85149; }
+    .log-info { color: #58a6ff; }
+    .type-input-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 24px;
+      width: 400px;
+    }
+    .modal-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+    .modal-input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 16px;
+    }
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+    .btn-secondary {
+      background: #21262d;
+      color: #c9d1d9;
+    }
+    .filter-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      padding: 4px 12px;
+      font-size: 12px;
+      background: #21262d;
+      color: #8b949e;
+      border: 1px solid #30363d;
+    }
+    .filter-btn.active {
+      background: #388bfd;
+      color: white;
+      border-color: #388bfd;
+    }
+    .current-page {
+      background: #21262d;
+      padding: 12px 16px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    .current-page a {
+      color: #58a6ff;
+      text-decoration: none;
+      word-break: break-all;
+    }
+    .current-page a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌐 AI Browser - 语义输出展示</h1>
+
+    <div class="input-section">
+      <input type="text" id="urlInput" placeholder="输入网站URL，例如: https://www.baidu.com" value="https://www.baidu.com">
+      <button class="btn-primary" id="analyzeBtn" onclick="analyze()">分析网站</button>
+      <button class="btn-secondary" id="refreshBtn" onclick="refreshElements()" style="display:none">刷新元素</button>
+      <button class="btn-secondary" id="closeBtn" onclick="closeSession()" style="display:none">关闭会话</button>
+    </div>
+
+    <div id="status" class="status hidden"></div>
+
+    <div id="currentPage" class="current-page" style="display:none">
+      <span>📍 当前页面：</span>
+      <a id="currentUrl" href="#" target="_blank"></a>
+      <span id="currentTitle" style="color:#8b949e;margin-left:10px"></span>
+    </div>
+
+    <div id="stats" class="stats hidden"></div>
+
+    <div class="tabs" id="tabs" style="display:none">
+      <button class="tab active" onclick="switchTab('markdown')">Markdown输出</button>
+      <button class="tab" onclick="switchTab('elements')">可交互元素</button>
+    </div>
+
+    <div id="markdownTab">
+      <div class="output-container">
+        <div class="panel">
+          <div class="panel-header">📝 Markdown 渲染效果</div>
+          <div class="panel-body">
+            <div id="markdownOutput" class="markdown-body"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">📄 Markdown 原始内容</div>
+          <div class="panel-body">
+            <div id="rawOutput" class="raw-output"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="elementsTab" style="display:none">
+      <div class="filter-bar" id="filterBar" style="display:none"></div>
+      <div class="element-list" id="elementList"></div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="action-log" id="actionLog" style="display:none">
+      <div style="color:#8b949e;margin-bottom:8px">📋 操作日志</div>
+      <div id="logEntries"></div>
+    </div>
+  </div>
+
+  <div id="typeModal" class="type-input-modal hidden">
+    <div class="modal-content">
+      <div class="modal-title">输入内容</div>
+      <input type="text" id="typeValue" class="modal-input" placeholder="请输入要填写的内容">
+      <div class="modal-buttons">
+        <button class="btn-secondary" onclick="closeTypeModal()">取消</button>
+        <button class="btn-primary" onclick="confirmType()">确认输入</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let sessionId = null;
+    let currentElements = [];
+    let currentFilter = 'all';
+    let pendingTypeElementId = null;
+    const API_BASE = '';
+
+    function showStatus(message, type) {
+      const status = document.getElementById('status');
+      status.className = `status status-${type}`;
+      status.textContent = message;
+      status.classList.remove('hidden');
+    }
+
+    function hideStatus() {
+      document.getElementById('status').classList.add('hidden');
+    }
+
+    function addLog(message, type = 'info') {
+      const log = document.getElementById('actionLog');
+      const entries = document.getElementById('logEntries');
+      log.style.display = 'block';
+      const time = new Date().toLocaleTimeString();
+      entries.innerHTML = `<div class="log-entry"><span class="log-time">[${time}]</span> <span class="log-${type}">${message}</span></div>` + entries.innerHTML;
+    }
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('elementsTab').style.display = tab === 'elements' ? 'block' : 'none';
+      document.getElementById('markdownTab').style.display = tab === 'markdown' ? 'block' : 'none';
+    }
+
+    function updateCurrentPage(url, title) {
+      const container = document.getElementById('currentPage');
+      const urlEl = document.getElementById('currentUrl');
+      const titleEl = document.getElementById('currentTitle');
+      container.style.display = 'block';
+      urlEl.href = url;
+      urlEl.textContent = url;
+      titleEl.textContent = title ? `- ${title}` : '';
+    }
+
+    function renderElements(elements) {
+      currentElements = elements;
+      const filtered = currentFilter === 'all' ? elements : elements.filter(e => e.type === currentFilter);
+      const list = document.getElementById('elementList');
+
+      if (filtered.length === 0) {
+        list.innerHTML = '<div style="color:#8b949e;padding:20px;text-align:center">没有找到元素</div>';
+        return;
+      }
+
+      list.innerHTML = filtered.map(el => {
+        const label = el.label || '(无标签)';
+        const actions = el.actions || ['click'];
+        const actionBtns = actions.map(a => {
+          if (a === 'click') return `<button class="btn-action btn-click" onclick="doAction('click','${el.id}')">点击</button>`;
+          if (a === 'type') return `<button class="btn-action btn-type" onclick="showTypeModal('${el.id}')">输入</button>`;
+          return '';
+        }).join('');
+
+        return `
+          <div class="element-item">
+            <div class="element-info">
+              <span class="element-type ${el.type}">${el.type}</span>
+              <span class="element-label">${label}</span>
+              <div class="element-id">${el.id}</div>
+            </div>
+            <div class="element-actions">${actionBtns}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderFilterBar(elements) {
+      const types = [...new Set(elements.map(e => e.type))];
+      const bar = document.getElementById('filterBar');
+      bar.style.display = 'flex';
+      bar.innerHTML = `<button class="filter-btn ${currentFilter === 'all' ? 'active' : ''}" onclick="setFilter('all')">全部 (${elements.length})</button>` +
+        types.map(t => {
+          const count = elements.filter(e => e.type === t).length;
+          return `<button class="filter-btn ${currentFilter === t ? 'active' : ''}" onclick="setFilter('${t}')">${t} (${count})</button>`;
+        }).join('');
+    }
+
+    function setFilter(type) {
+      currentFilter = type;
+      renderFilterBar(currentElements);
+      renderElements(currentElements);
+    }
+
+    async function doAction(action, elementId, value) {
+      try {
+        addLog(`执行 ${action} 操作: ${elementId}`, 'info');
+        const res = await fetch(`${API_BASE}/v1/sessions/${sessionId}/action`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, elementId, value })
+        });
+        const data = await res.json();
+        if (data.success) {
+          addLog(`✓ 成功! 页面: ${data.page?.title || '-'}`, 'success');
+          updateCurrentPage(data.page?.url || '', data.page?.title || '');
+          setTimeout(refreshElements, 800);
+        } else {
+          addLog(`✗ 失败: ${data.error?.message || '未知错误'}`, 'error');
+        }
+      } catch (err) {
+        addLog(`✗ 网络错误: ${err.message}`, 'error');
+      }
+    }
+
+    function showTypeModal(elementId) {
+      pendingTypeElementId = elementId;
+      document.getElementById('typeModal').classList.remove('hidden');
+      document.getElementById('typeValue').focus();
+    }
+
+    function closeTypeModal() {
+      document.getElementById('typeModal').classList.add('hidden');
+      document.getElementById('typeValue').value = '';
+      pendingTypeElementId = null;
+    }
+
+    function confirmType() {
+      const value = document.getElementById('typeValue').value;
+      if (pendingTypeElementId && value) {
+        doAction('type', pendingTypeElementId, value);
+      }
+      closeTypeModal();
+    }
+
+    async function refreshElements() {
+      try {
+        showStatus('刷新元素中...', 'loading');
+        const semRes = await fetch(`${API_BASE}/v1/sessions/${sessionId}/semantic`);
+        const semData = await semRes.json();
+        renderElements(semData.elements || []);
+        renderFilterBar(semData.elements || []);
+        showStats(semData);
+        showStatus(`已刷新，当前页面: ${semData.page?.title || '-'}`, 'success');
+      } catch (err) {
+        showStatus(`刷新失败: ${err.message}`, 'error');
+      }
+    }
+
+    async function closeSession() {
+      if (sessionId) {
+        await fetch(`${API_BASE}/v1/sessions/${sessionId}`, { method: 'DELETE' });
+        sessionId = null;
+        document.getElementById('refreshBtn').style.display = 'none';
+        document.getElementById('closeBtn').style.display = 'none';
+        document.getElementById('tabs').style.display = 'none';
+        document.getElementById('filterBar').style.display = 'none';
+        document.getElementById('elementList').innerHTML = '';
+        document.getElementById('actionLog').style.display = 'none';
+        showStatus('会话已关闭', 'success');
+      }
+    }
+
+    async function analyze() {
+      const url = document.getElementById('urlInput').value.trim();
+      if (!url) {
+        showStatus('请输入网站URL', 'error');
+        return;
+      }
+
+      const btn = document.getElementById('analyzeBtn');
+      btn.disabled = true;
+      btn.textContent = '分析中...';
+
+      try {
+        // 关闭旧会话
+        if (sessionId) {
+          await fetch(`${API_BASE}/v1/sessions/${sessionId}`, { method: 'DELETE' });
+        }
+
+        showStatus('正在创建浏览器会话...', 'loading');
+        const sessionRes = await fetch(`${API_BASE}/v1/sessions`, { method: 'POST' });
+        const sessionData = await sessionRes.json();
+        sessionId = sessionData.sessionId;
+
+        showStatus('正在导航到目标网站...', 'loading');
+        const navRes = await fetch(`${API_BASE}/v1/sessions/${sessionId}/navigate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        const navData = await navRes.json();
+
+        if (!navData.success) {
+          throw new Error(navData.error?.message || '导航失败');
+        }
+
+        showStatus('正在提取语义元素...', 'loading');
+        const semRes = await fetch(`${API_BASE}/v1/sessions/${sessionId}/semantic`);
+        const semData = await semRes.json();
+
+        const contentRes = await fetch(`${API_BASE}/v1/sessions/${sessionId}/content`);
+        const contentData = await contentRes.json();
+
+        // 显示元素列表
+        renderElements(semData.elements || []);
+        renderFilterBar(semData.elements || []);
+        showStats(semData);
+        updateCurrentPage(semData.page?.url || url, semData.page?.title || '');
+
+        // 生成Markdown
+        const markdown = generateMarkdown(url, navData, semData, contentData);
+        document.getElementById('rawOutput').textContent = markdown;
+        document.getElementById('markdownOutput').innerHTML = marked.parse(markdown);
+
+        // 显示控制按钮
+        document.getElementById('refreshBtn').style.display = 'inline-block';
+        document.getElementById('closeBtn').style.display = 'inline-block';
+        document.getElementById('tabs').style.display = 'flex';
+
+        showStatus('分析完成！点击元素可执行操作', 'success');
+        addLog(`已加载 ${semData.elements?.length || 0} 个元素`, 'success');
+
+      } catch (err) {
+        showStatus(`错误: ${err.message}`, 'error');
+        console.error(err);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '分析网站';
+      }
+    }
+
+    function showStats(semData) {
+      const stats = document.getElementById('stats');
+      const elements = semData.elements || [];
+      const regions = semData.regions || [];
+
+      const typeCount = {};
+      elements.forEach(el => {
+        typeCount[el.type] = (typeCount[el.type] || 0) + 1;
+      });
+
+      stats.innerHTML = `
+        <div class="stat-card">
+          <div class="stat-value">${elements.length}</div>
+          <div class="stat-label">总元素数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${typeCount.button || 0}</div>
+          <div class="stat-label">按钮</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${typeCount.link || 0}</div>
+          <div class="stat-label">链接</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${typeCount.textbox || 0}</div>
+          <div class="stat-label">输入框</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${regions.length}</div>
+          <div class="stat-label">区域</div>
+        </div>
+      `;
+      stats.classList.remove('hidden');
+    }
+
+    function generateMarkdown(url, navData, semData, contentData) {
+      const lines = [];
+
+      lines.push('# AI Browser 语义分析报告\n');
+      lines.push(`> 分析时间: ${new Date().toLocaleString()}\n`);
+
+      lines.push('## 📄 页面信息\n');
+      lines.push('| 属性 | 值 |');
+      lines.push('|------|-----|');
+      lines.push(`| URL | ${semData.page?.url || url} |`);
+      lines.push(`| 标题 | ${semData.page?.title || '-'} |`);
+      lines.push(`| 类型 | \`${semData.page?.type || 'unknown'}\` |`);
+      lines.push(`| 摘要 | ${semData.page?.summary || '-'} |`);
+      lines.push('');
+
+      // 元素统计
+      const elements = semData.elements || [];
+      const typeCount = {};
+      elements.forEach(el => {
+        typeCount[el.type] = (typeCount[el.type] || 0) + 1;
+      });
+
+      lines.push('## 📊 元素统计\n');
+      lines.push(`共收集 **${elements.length}** 个可交互元素：\n`);
+      lines.push('| 类型 | 数量 |');
+      lines.push('|------|------|');
+      Object.entries(typeCount).forEach(([type, count]) => {
+        lines.push(`| ${type} | ${count} |`);
+      });
+      lines.push('');
+
+      // 元素列表（前20个）
+      lines.push('## 🔗 元素列表（前20个）\n');
+      elements.slice(0, 20).forEach((el, i) => {
+        const label = el.label || '(无标签)';
+        const actions = el.actions?.join(', ') || '-';
+        lines.push(`${i + 1}. **[${el.type}]** ${label}`);
+        lines.push(`   - ID: \`${el.id}\``);
+        lines.push(`   - 操作: ${actions}`);
+        if (el.bounds && el.bounds.width > 0) {
+          lines.push(`   - 位置: (${Math.round(el.bounds.x)}, ${Math.round(el.bounds.y)}) ${Math.round(el.bounds.width)}x${Math.round(el.bounds.height)}`);
+        }
+        lines.push('');
+      });
+
+      // 区域信息
+      const regions = semData.regions || [];
+      if (regions.length > 0) {
+        lines.push('## 🗺️ 页面区域\n');
+        regions.forEach(region => {
+          lines.push(`- **${region.name}**: ${region.role || '-'}`);
+        });
+        lines.push('');
+      }
+
+      // 内容摘要
+      if (contentData) {
+        lines.push('## 📝 内容摘要\n');
+        if (contentData.title) {
+          lines.push(`**标题**: ${contentData.title}\n`);
+        }
+        if (contentData.text) {
+          const text = contentData.text.slice(0, 500).replace(/\n+/g, ' ').trim();
+          lines.push(`**文本预览**: ${text}${contentData.text.length > 500 ? '...' : ''}\n`);
+        }
+        if (contentData.links?.length > 0) {
+          lines.push(`**链接数**: ${contentData.links.length}\n`);
+        }
+      }
+
+      // JSON示例
+      lines.push('## 💻 JSON 输出示例\n');
+      lines.push('```json');
+      const sample = elements.slice(0, 3);
+      lines.push(JSON.stringify(sample, null, 2));
+      lines.push('```\n');
+
+      return lines.join('\n');
+    }
+
+    // 回车键触发分析
+    document.getElementById('urlInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') analyze();
+    });
+  </script>
+</body>
+</html>
