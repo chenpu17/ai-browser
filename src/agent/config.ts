@@ -4,6 +4,6 @@ export const config = {
     apiKey: process.env.LLM_API_KEY || '',
     model: process.env.LLM_MODEL || 'gpt-4o-mini',
   },
-  maxIterations: 100,
+  maxIterations: 20,
   maxConsecutiveErrors: 3,
 };

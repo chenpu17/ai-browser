@@ -101,4 +101,26 @@ export class BrowserManager {
   isLaunched(): boolean {
     return this.headlessBrowser !== null || this.headfulBrowser !== null;
   }
+
+  isHeadlessLaunched(): boolean {
+    return this.headlessBrowser !== null;
+  }
+
+  isHeadfulLaunched(): boolean {
+    return this.headfulBrowser !== null;
+  }
+
+  async closeHeadless(): Promise<void> {
+    if (this.headlessBrowser) {
+      await this.headlessBrowser.close();
+      this.headlessBrowser = null;
+    }
+  }
+
+  async closeHeadful(): Promise<void> {
+    if (this.headfulBrowser) {
+      await this.headfulBrowser.close();
+      this.headfulBrowser = null;
+    }
+  }
 }

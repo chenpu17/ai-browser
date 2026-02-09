@@ -109,20 +109,83 @@ import {
 
 ## MCP 工具
 
-LLM Agent 可通过 MCP 协议调用以下浏览器工具：
+LLM Agent 可通过 MCP 协议调用以下 28 个浏览器工具。所有工具的 `sessionId` 参数均为可选 — 不传时自动创建/复用默认会话。
+
+### 会话管理
 
 | 工具 | 说明 |
 |------|------|
-| `navigate` | 打开指定 URL，慢速页面自动降级超时 |
-| `get_page_info` | 获取页面交互元素及其语义 ID |
-| `get_page_content` | 提取页面文本内容（带注意力评分） |
+| `create_session` | 创建新的浏览器会话 |
+| `close_session` | 关闭浏览器会话 |
+
+### 导航与页面信息
+
+| 工具 | 说明 |
+|------|------|
+| `navigate` | 打开指定 URL，返回 `statusCode`，慢速页面自动降级超时，检测待处理弹窗 |
+| `get_page_info` | 获取页面交互元素及其语义 ID（支持 `maxElements`、`visibleOnly` 参数；敏感字段值自动掩码；包含页面稳定性和弹窗信息） |
+| `get_page_content` | 提取页面文本内容，带注意力评分（支持 `maxLength` 截断） |
 | `find_element` | 按名称或类型模糊搜索元素 |
-| `click` | 通过语义 ID 点击元素 |
+| `screenshot` | 页面截图（支持 `fullPage` 全页、`element_id` 元素截图、`format`/`quality` 格式质量） |
+| `execute_javascript` | 在页面执行 JavaScript（5 秒超时，结果超过 4000 字符自动截断） |
+
+### 元素交互
+
+| 工具 | 说明 |
+|------|------|
+| `click` | 通过语义 ID 点击元素（自动捕获弹出窗口为新标签页） |
 | `type_text` | 向输入框输入文本，可选回车提交 |
-| `press_key` | 模拟键盘按键（Enter、Escape、Tab 等） |
+| `hover` | 悬停在元素上，触发 tooltip / 下拉菜单 |
+| `select_option` | 通过值选择下拉选项 |
+| `set_value` | 直接设置元素值（适用于富文本编辑器、contenteditable 等场景） |
+| `press_key` | 模拟键盘按键（Enter、Escape、Tab 等），支持组合键（`modifiers: ['Control']`） |
 | `scroll` | 页面上下滚动 |
 | `go_back` | 浏览器后退 |
-| `wait` | 等待页面加载 |
+| `wait` | 等待条件：`time`、`selector`、`networkidle` 或 `element_hidden` |
+
+### 标签页管理
+
+| 工具 | 说明 |
+|------|------|
+| `create_tab` | 创建新标签页（自动切换，可选 URL） |
+| `list_tabs` | 列出会话中所有标签页 |
+| `switch_tab` | 切换到指定标签页 |
+| `close_tab` | 关闭指定标签页 |
+
+### 弹窗处理
+
+| 工具 | 说明 |
+|------|------|
+| `handle_dialog` | 处理页面弹窗 — 接受或关闭 alert、confirm、prompt |
+| `get_dialog_info` | 获取待处理弹窗信息和弹窗历史 |
+
+### 页面监控
+
+| 工具 | 说明 |
+|------|------|
+| `wait_for_stable` | 等待 DOM 稳定（无 DOM 变更 + 无待处理网络请求） |
+| `get_network_logs` | 获取网络请求日志（支持 `xhr`、`failed`、`slow`、`urlPattern` 过滤） |
+| `get_console_logs` | 获取控制台日志（按级别过滤，默认返回 error + warn） |
+
+### 文件处理
+
+| 工具 | 说明 |
+|------|------|
+| `upload_file` | 上传文件到 file input 元素 |
+| `get_downloads` | 获取已下载文件列表 |
+
+### 结构化错误码
+
+错误响应包含 `errorCode` 字段，便于程序化处理：
+
+| 错误码 | 含义 |
+|--------|------|
+| `ELEMENT_NOT_FOUND` | 元素不存在，响应包含 `hint` 提示刷新页面信息 |
+| `NAVIGATION_TIMEOUT` | 页面加载超时，可重试 |
+| `SESSION_NOT_FOUND` | 会话不存在 |
+| `PAGE_CRASHED` | 页面崩溃或已关闭 |
+| `INVALID_PARAMETER` | 参数值无效 |
+| `EXECUTION_ERROR` | JavaScript 执行错误 |
 
 ## REST API
 

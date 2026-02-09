@@ -526,8 +526,16 @@ export function registerRoutes(
       throw new ApiError(ErrorCode.INVALID_REQUEST, 'No active tab', 404);
     }
 
-    const base64 = await tab.page.screenshot({ type: 'png', encoding: 'base64' }) as string;
-    return { image: `data:image/png;base64,${base64}` };
+    try {
+      const base64 = await tab.page.screenshot({ type: 'png', encoding: 'base64' }) as string;
+      return { image: `data:image/png;base64,${base64}` };
+    } catch (err: any) {
+      const msg = err.message || '';
+      if (msg.includes('Target closed') || msg.includes('detached') || msg.includes('crashed')) {
+        throw new ApiError(ErrorCode.INTERNAL_ERROR, 'Page is no longer available', 410);
+      }
+      throw err;
+    }
   });
 
   // ========== Agent API ==========

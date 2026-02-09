@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Hover Test</title>
+<style>
+  .tooltip { display: none; background: #333; color: #fff; padding: 4px 8px; position: absolute; top: 40px; }
+  .hover-target:hover .tooltip { display: block; }
+  #hover-status { margin-top: 20px; }
+</style>
+</head>
+<body>
+  <h1>Hover Test Page</h1>
+  <div class="hover-target" style="position:relative;">
+    <button id="hover-btn">Hover me</button>
+    <div class="tooltip" id="tooltip-text">Tooltip content</div>
+  </div>
+  <div id="hover-status">Not hovered</div>
+  <script>
+    var btn = document.getElementById('hover-btn');
+    btn.addEventListener('mouseenter', function() {
+      document.getElementById('hover-status').textContent = 'Hovered!';
+    });
+    btn.addEventListener('mouseleave', function() {
+      document.getElementById('hover-status').textContent = 'Not hovered';
+    });
+  </script>
+</body>
+</html>

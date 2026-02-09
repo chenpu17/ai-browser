@@ -160,7 +160,7 @@ describe('BrowsingAgent', () => {
 
     // Verify tools were discovered by checking MCP listTools directly
     const { tools } = await mcpClient.listTools();
-    expect(tools.length).toBe(12); // 12 MCP tools
+    expect(tools.length).toBe(28); // 28 MCP tools
     // done tool is added by agent internally, not from MCP
 
     try { await mcpClient.close(); } catch {}

@@ -2,11 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { Page } from 'puppeteer';
 import { BrowserManager, BrowserOptions } from './BrowserManager.js';
 import { CookieStore } from './CookieStore.js';
+import { PageEventTracker, PageEventTrackerOptions } from './PageEventTracker.js';
 
 export interface Tab {
   id: string;
   page: Page;
   url: string;
+  events?: PageEventTracker;
 }
 
 export interface Session {
@@ -29,13 +31,22 @@ export class SessionManager {
   private cookieStore: CookieStore | null = null;
   private cleanupRunning = false;
   private syncRunning = false;
+  private idleCloseTimerHeadless: NodeJS.Timeout | null = null;
+  private idleCloseTimerHeadful: NodeJS.Timeout | null = null;
   private readonly CLEANUP_INTERVAL = 60000;
   private readonly COOKIE_SYNC_INTERVAL = 30000;
+  private readonly IDLE_CLOSE_DELAY = 120000; // 2 minutes
   private readonly MAX_TABS_PER_SESSION = 20;
+  private pageEventTrackerOptions: PageEventTrackerOptions = {};
 
   constructor(browserManager: BrowserManager) {
     this.browserManager = browserManager;
     this.startCleanupTimer();
+  }
+
+  /** 设置 PageEventTracker 选项（用于测试等场景） */
+  setPageEventTrackerOptions(options: PageEventTrackerOptions): void {
+    this.pageEventTrackerOptions = options;
   }
 
   /** 设置 CookieStore，启动 headful 会话的定期 cookie 同步 */
@@ -71,6 +82,7 @@ export class SessionManager {
     } finally {
       this.cleanupRunning = false;
     }
+    this.scheduleIdleBrowserClose();
   }
 
   stopTimers(): void {
@@ -81,6 +93,60 @@ export class SessionManager {
     if (this.cookieSyncTimer) {
       clearInterval(this.cookieSyncTimer);
       this.cookieSyncTimer = null;
+    }
+    if (this.idleCloseTimerHeadless) {
+      clearTimeout(this.idleCloseTimerHeadless);
+      this.idleCloseTimerHeadless = null;
+    }
+    if (this.idleCloseTimerHeadful) {
+      clearTimeout(this.idleCloseTimerHeadful);
+      this.idleCloseTimerHeadful = null;
+    }
+  }
+
+  /** 检查是否还有对应类型的 session，若无则延迟关闭浏览器实例 */
+  private scheduleIdleBrowserClose(): void {
+    const hasHeadless = [...this.sessions.values()].some(s => s.headless);
+    const hasHeadful = [...this.sessions.values()].some(s => !s.headless);
+
+    // Schedule headless close if no headless sessions remain
+    if (!hasHeadless && this.browserManager.isHeadlessLaunched()) {
+      if (!this.idleCloseTimerHeadless) {
+        this.idleCloseTimerHeadless = setTimeout(async () => {
+          this.idleCloseTimerHeadless = null;
+          try {
+            const stillNoHeadless = ![...this.sessions.values()].some(s => s.headless);
+            if (stillNoHeadless) {
+              await this.browserManager.closeHeadless();
+            }
+          } catch {
+            // Browser may already be closed, ignore
+          }
+        }, this.IDLE_CLOSE_DELAY);
+      }
+    } else if (hasHeadless && this.idleCloseTimerHeadless) {
+      clearTimeout(this.idleCloseTimerHeadless);
+      this.idleCloseTimerHeadless = null;
+    }
+
+    // Schedule headful close if no headful sessions remain
+    if (!hasHeadful && this.browserManager.isHeadfulLaunched()) {
+      if (!this.idleCloseTimerHeadful) {
+        this.idleCloseTimerHeadful = setTimeout(async () => {
+          this.idleCloseTimerHeadful = null;
+          try {
+            const stillNoHeadful = ![...this.sessions.values()].some(s => !s.headless);
+            if (stillNoHeadful) {
+              await this.browserManager.closeHeadful();
+            }
+          } catch {
+            // Browser may already be closed, ignore
+          }
+        }, this.IDLE_CLOSE_DELAY);
+      }
+    } else if (hasHeadful && this.idleCloseTimerHeadful) {
+      clearTimeout(this.idleCloseTimerHeadful);
+      this.idleCloseTimerHeadful = null;
     }
   }
 
@@ -183,6 +249,13 @@ export class SessionManager {
     }
   }
 
+  /** 为 Tab 创建并绑定 PageEventTracker */
+  private async setupPageListeners(tab: Tab): Promise<void> {
+    const tracker = new PageEventTracker(this.pageEventTrackerOptions);
+    await tracker.attach(tab.page);
+    tab.events = tracker;
+  }
+
   async create(options: BrowserOptions = {}): Promise<Session> {
     const page = await this.browserManager.newPage(options);
     const now = Date.now();
@@ -208,6 +281,8 @@ export class SessionManager {
     };
 
     this.sessions.set(session.id, session);
+    // Setup page event tracking
+    await this.setupPageListeners(tab);
     // headful 会话注册自动 cookie 同步（检测到 Set-Cookie 时自动保存）
     if (isHeadful) {
       await this.setupAutoCookieSync(page);
@@ -241,6 +316,7 @@ export class SessionManager {
     }
     const tabId = `tab_${++this.tabCounter}`;
     const tab: Tab = { id: tabId, page, url: '' };
+    await this.setupPageListeners(tab);
     session.tabs.set(tabId, tab);
     return tab;
   }
@@ -257,6 +333,22 @@ export class SessionManager {
     return Array.from(session.tabs.values());
   }
 
+  /** 将 popup 页面注册为新 Tab */
+  async registerPopupAsTab(sessionId: string, popupPage: Page): Promise<Tab | null> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+    if (session.tabs.size >= this.MAX_TABS_PER_SESSION) return null;
+
+    const tabId = `tab_${++this.tabCounter}`;
+    const tab: Tab = { id: tabId, page: popupPage, url: popupPage.url() };
+    await this.setupPageListeners(tab);
+    if (!session.headless) {
+      await this.setupAutoCookieSync(popupPage);
+    }
+    session.tabs.set(tabId, tab);
+    return tab;
+  }
+
   switchTab(sessionId: string, tabId: string): boolean {
     const session = this.sessions.get(sessionId);
     if (!session || !session.tabs.has(tabId)) return false;
@@ -271,6 +363,7 @@ export class SessionManager {
     if (!tab) return false;
 
     try {
+      await tab.events?.detach();
       await tab.page.close();
     } catch {
       // ignore close errors
@@ -280,6 +373,7 @@ export class SessionManager {
     // 如果关闭的是最后一个Tab，关闭整个Session
     if (session.tabs.size === 0) {
       this.sessions.delete(sessionId);
+      this.scheduleIdleBrowserClose();
       return true;
     }
 
@@ -298,12 +392,14 @@ export class SessionManager {
     const session = this.sessions.get(id);
     if (!session) return false;
 
-    // 关闭所有Tab（使用allSettled防止单个失败影响其他）
-    const closePromises = Array.from(session.tabs.values()).map(tab =>
-      tab.page.close().catch(() => {/* ignore close errors */})
-    );
+    // 关闭所有Tab（先 detach events，再关闭页面）
+    const closePromises = Array.from(session.tabs.values()).map(async tab => {
+      try { await tab.events?.detach(); } catch {}
+      try { await tab.page.close(); } catch {}
+    });
     await Promise.allSettled(closePromises);
     this.sessions.delete(id);
+    this.scheduleIdleBrowserClose();
     return true;
   }
 

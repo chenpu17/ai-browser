@@ -101,7 +101,116 @@ export async function executeAction(
       await page.goForward();
       break;
 
+    case 'hover':
+      if (!elementId) throw new Error('elementId required for hover');
+      const hoverSelector = `[data-semantic-id="${escapeCSS(elementId)}"]`;
+      try {
+        await page.hover(hoverSelector);
+      } catch {
+        // Fallback: use accessibility tree to find and hover
+        const client = await page.createCDPSession();
+        try {
+          const { nodes } = await client.send('Accessibility.getFullAXTree');
+          const node = nodes.find((n: any) => generateElementId(n) === elementId);
+          if (!node?.backendDOMNodeId) throw new Error('Element not found');
+          const { object } = await client.send('DOM.resolveNode', { backendNodeId: node.backendDOMNodeId });
+          if (!object?.objectId) throw new Error('Cannot resolve element');
+          try {
+            await client.send('Runtime.callFunctionOn', {
+              objectId: object.objectId,
+              functionDeclaration: 'function() { this.scrollIntoView({block:"center"}); this.dispatchEvent(new MouseEvent("mouseover", {bubbles:true})); this.dispatchEvent(new MouseEvent("mouseenter", {bubbles:false})); }',
+            });
+          } finally {
+            await client.send('Runtime.releaseObject', { objectId: object.objectId }).catch(() => {});
+          }
+        } finally {
+          try { await client.detach(); } catch {}
+        }
+      }
+      await new Promise(r => setTimeout(r, 300));
+      break;
+
+    case 'select':
+      if (!elementId) throw new Error('elementId required for select');
+      if (value === undefined) throw new Error('value required for select');
+      const selectSelector = `[data-semantic-id="${escapeCSS(elementId)}"]`;
+      try {
+        await page.select(selectSelector, value);
+      } catch {
+        // Fallback: use accessibility tree to find and select
+        const client = await page.createCDPSession();
+        try {
+          const { nodes } = await client.send('Accessibility.getFullAXTree');
+          const node = nodes.find((n: any) => generateElementId(n) === elementId);
+          if (!node?.backendDOMNodeId) throw new Error('Element not found');
+          const { object } = await client.send('DOM.resolveNode', { backendNodeId: node.backendDOMNodeId });
+          if (!object?.objectId) throw new Error('Cannot resolve element');
+          try {
+            await client.send('Runtime.callFunctionOn', {
+              objectId: object.objectId,
+              functionDeclaration: `function(v) { this.value = v; this.dispatchEvent(new Event('change', {bubbles:true})); }`,
+              arguments: [{ value }],
+            });
+          } finally {
+            await client.send('Runtime.releaseObject', { objectId: object.objectId }).catch(() => {});
+          }
+        } finally {
+          try { await client.detach(); } catch {}
+        }
+      }
+      break;
+
     default:
       throw new Error(`Unknown action: ${action}`);
+  }
+}
+
+export async function setValueByAccessibility(
+  page: Page,
+  elementId: string,
+  value: string,
+  isHtml: boolean = false,
+): Promise<void> {
+  const client = await page.createCDPSession();
+  try {
+    const { nodes } = await client.send('Accessibility.getFullAXTree');
+    const node = nodes.find((n: any) => generateElementId(n) === elementId);
+    if (!node?.backendDOMNodeId) throw new Error('Element not found');
+    const { object } = await client.send('DOM.resolveNode', {
+      backendNodeId: node.backendDOMNodeId,
+    });
+    if (!object?.objectId) throw new Error('Cannot resolve element');
+    try {
+      await client.send('Runtime.callFunctionOn', {
+        objectId: object.objectId,
+        functionDeclaration: `function(value, isHtml) {
+          var tag = this.tagName ? this.tagName.toLowerCase() : '';
+          if (tag === 'input' || tag === 'textarea') {
+            this.focus();
+            this.value = value;
+            this.dispatchEvent(new Event('input', {bubbles:true}));
+            this.dispatchEvent(new Event('change', {bubbles:true}));
+          } else if (this.isContentEditable || this.contentEditable === 'true') {
+            this.focus();
+            if (isHtml) {
+              this.innerHTML = value;
+            } else {
+              this.innerText = value;
+            }
+            this.dispatchEvent(new Event('input', {bubbles:true}));
+            this.dispatchEvent(new Event('change', {bubbles:true}));
+          } else {
+            throw new Error('Element is not an input, textarea, or contenteditable');
+          }
+        }`,
+        arguments: [{ value }, { value: isHtml }],
+      });
+    } finally {
+      await client.send('Runtime.releaseObject', {
+        objectId: object.objectId,
+      }).catch(() => {});
+    }
+  } finally {
+    try { await client.detach(); } catch {}
   }
 }

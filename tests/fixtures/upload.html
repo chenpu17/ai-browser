@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head><title>Upload Test</title></head>
+<body>
+  <label for="fileInput">Upload:</label>
+  <input id="fileInput" type="file" />
+  <div id="fileName"></div>
+  <script>
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+      document.getElementById('fileName').textContent = e.target.files[0]?.name || '';
+    });
+  </script>
+</body>
+</html>

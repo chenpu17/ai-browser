@@ -79,6 +79,7 @@ async function main() {
   const shutdown = async () => {
     app.log.info('Shutting down...');
     await sessionManager.closeAll();
+    cookieStore.dispose();
     await browserManager.close();
     await app.close();
     process.exit(0);

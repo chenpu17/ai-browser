@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head><title>Select Test</title></head>
+<body>
+  <h1>Select Test Page</h1>
+  <label for="color">Choose a color:</label>
+  <select id="color" name="color">
+    <option value="red">Red</option>
+    <option value="green">Green</option>
+    <option value="blue">Blue</option>
+  </select>
+  <p id="result"></p>
+  <script>
+    document.getElementById('color').addEventListener('change', function() {
+      document.getElementById('result').textContent = 'Selected: ' + this.value;
+    });
+  </script>
+</body>
+</html>

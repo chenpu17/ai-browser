@@ -118,7 +118,78 @@ export class ContentExtractor {
 
       // 按注意力降序排列，截取前50个
       sections.sort((a, b) => b.attention - a.attention);
-      const topSections = sections.slice(0, 50);
+      let topSections = sections.slice(0, 50);
+
+      // Fallback: SPA 站点可能不使用语义标签，从 div/section/article/span 中提取文本
+      if (topSections.length < 3) {
+        const fallbackSelector = 'div, section, article, main, [role="article"], [role="main"]';
+        const fallbackNodes = Array.from(document.querySelectorAll(fallbackSelector));
+        const fallbackSections: Array<{ tag: string; text: string; attention: number }> = [];
+        const fallbackSeen = new Set(seenTexts);
+
+        for (const node of fallbackNodes) {
+          const el = node as HTMLElement;
+          if (el.closest(hiddenSelector)) continue;
+          const style = getComputedStyle(el);
+          if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+
+          // Only consider leaf-ish containers with direct text content
+          const directText = Array.from(el.childNodes)
+            .filter(n => n.nodeType === Node.TEXT_NODE)
+            .map(n => (n.textContent || '').trim())
+            .join(' ')
+            .trim();
+          const fullText = (el.textContent || '').replace(/\s+/g, ' ').trim();
+          // Use element if it has meaningful direct text, or is a leaf with short content
+          const text = directText.length > 10 ? directText
+            : (el.children.length === 0 && fullText.length > 10) ? fullText
+            : (fullText.length > 20 && fullText.length < 2000 && el.querySelectorAll('div, section, article').length === 0) ? fullText
+            : '';
+          if (!text || text.length < 10) continue;
+          if (fallbackSeen.has(text)) continue;
+          fallbackSeen.add(text);
+
+          const rect = el.getBoundingClientRect();
+          if (rect.width === 0 || rect.height === 0) continue;
+
+          const area = rect.width * rect.height;
+          const areaScore = Math.min(Math.sqrt(area / viewportArea), 1);
+          const elCenterY = rect.top + rect.height / 2;
+          const posScore = (elCenterY >= 0 && elCenterY <= viewportH) ? 0.6 : 0.3;
+
+          fallbackSections.push({
+            tag: el.tagName.toLowerCase(),
+            text: text.slice(0, 500),
+            attention: Math.round((posScore * 0.5 + areaScore * 0.5) * 1000) / 1000,
+          });
+        }
+
+        fallbackSections.sort((a, b) => b.attention - a.attention);
+        topSections = [...topSections, ...fallbackSections.slice(0, 50 - topSections.length)];
+      }
+
+      // Last resort: if still no content, use innerText split into chunks
+      if (topSections.length === 0) {
+        const bodyText = (document.body.innerText || '').trim();
+        if (bodyText.length > 10) {
+          const lines = bodyText.split('\n').filter(l => l.trim().length > 0);
+          let chunk = '';
+          for (const line of lines) {
+            if (chunk.length + line.length > 400) {
+              if (chunk.trim()) {
+                topSections.push({ tag: 'div', text: chunk.trim(), attention: 0.3 });
+              }
+              chunk = line;
+              if (topSections.length >= 50) break;
+            } else {
+              chunk += (chunk ? '\n' : '') + line;
+            }
+          }
+          if (chunk.trim() && topSections.length < 50) {
+            topSections.push({ tag: 'div', text: chunk.trim(), attention: 0.3 });
+          }
+        }
+      }
 
       // 提取链接
       const links = Array.from(document.querySelectorAll('a[href]'))

@@ -18,7 +18,7 @@ function formatForLLM(rawText: string, toolName: string): string {
   try {
     const data = JSON.parse(rawText);
     if (toolName === 'get_page_info' && data?.elements) {
-      const summary = {
+      const summary: any = {
         page: data.page,
         elementCount: data.elements.length,
         elements: data.elements.slice(0, 30).map((e: any) => ({
@@ -28,8 +28,10 @@ function formatForLLM(rawText: string, toolName: string): string {
         })),
         intents: data.intents,
       };
+      if (data.stability) summary.stability = data.stability;
+      if (data.pendingDialog) summary.pendingDialog = data.pendingDialog;
       if (data.elements.length > 30) {
-        (summary as any).note = `显示前30个元素，共${data.elements.length}个`;
+        summary.note = `显示前30个元素，共${data.elements.length}个`;
       }
       return truncate(JSON.stringify(summary, null, 2));
     }

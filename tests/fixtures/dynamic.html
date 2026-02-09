@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+<head><title>Dynamic Test</title></head>
+<body>
+  <div id="container">Loading...</div>
+  <script>
+    setTimeout(() => {
+      document.getElementById('container').innerHTML = '<button id="loaded-btn">Loaded</button>';
+    }, 1000);
+  </script>
+</body>
+</html>

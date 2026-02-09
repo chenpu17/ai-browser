@@ -109,20 +109,83 @@ import {
 
 ## MCP Tools
 
-The following tools are available to LLM agents via MCP:
+The following 28 tools are available to LLM agents via MCP. All tools accept an optional `sessionId` — omitting it auto-creates/reuses a default session.
+
+### Session Management
 
 | Tool | Description |
 |------|-------------|
-| `navigate` | Open a URL, with timeout degradation for slow pages |
-| `get_page_info` | Get interactive elements with semantic IDs |
-| `get_page_content` | Extract page text with attention scores |
+| `create_session` | Create a new browser session |
+| `close_session` | Close a browser session |
+
+### Navigation & Page Info
+
+| Tool | Description |
+|------|-------------|
+| `navigate` | Open a URL, returns `statusCode`, with timeout degradation for slow pages, detects pending dialogs |
+| `get_page_info` | Get interactive elements with semantic IDs (supports `maxElements`, `visibleOnly`; masks sensitive field values; includes stability and dialog info) |
+| `get_page_content` | Extract page text with attention scores (supports `maxLength` truncation) |
 | `find_element` | Fuzzy search for elements by name or type |
-| `click` | Click an element by semantic ID |
+| `screenshot` | Take a page screenshot (supports `fullPage`, `element_id`, `format`, `quality`) |
+| `execute_javascript` | Execute JavaScript on the page (5s timeout, 4000-char result truncation) |
+
+### Element Interaction
+
+| Tool | Description |
+|------|-------------|
+| `click` | Click an element by semantic ID (captures popup windows as new tabs) |
 | `type_text` | Type text into an input, optionally press Enter |
-| `press_key` | Press keyboard keys (Enter, Escape, Tab, etc.) |
+| `hover` | Hover over an element to trigger tooltips/dropdowns |
+| `select_option` | Select a dropdown option by value |
+| `set_value` | Set element value directly (for rich text editors, contenteditable) |
+| `press_key` | Press keyboard keys (Enter, Escape, Tab, etc.), supports modifier combos (`modifiers: ['Control']`) |
 | `scroll` | Scroll the page up or down |
 | `go_back` | Navigate back |
-| `wait` | Wait for page loading |
+| `wait` | Wait for condition: `time`, `selector`, `networkidle`, or `element_hidden` |
+
+### Tab Management
+
+| Tool | Description |
+|------|-------------|
+| `create_tab` | Create a new tab (auto-switches to it, optional URL) |
+| `list_tabs` | List all tabs in the session |
+| `switch_tab` | Switch to a specific tab |
+| `close_tab` | Close a specific tab |
+
+### Dialog Handling
+
+| Tool | Description |
+|------|-------------|
+| `handle_dialog` | Handle page dialogs — accept or dismiss alert, confirm, prompt |
+| `get_dialog_info` | Get pending dialog info and dialog history |
+
+### Page Monitoring
+
+| Tool | Description |
+|------|-------------|
+| `wait_for_stable` | Wait for DOM stability (no mutations + no pending network requests) |
+| `get_network_logs` | Get network request logs (filter by `xhr`, `failed`, `slow`, `urlPattern`) |
+| `get_console_logs` | Get console logs (filter by level, default: error + warn) |
+
+### File Handling
+
+| Tool | Description |
+|------|-------------|
+| `upload_file` | Upload a file to a file input element |
+| `get_downloads` | Get downloaded files list |
+
+### Structured Error Codes
+
+Error responses include an `errorCode` field for programmatic handling:
+
+| Code | Meaning |
+|------|---------|
+| `ELEMENT_NOT_FOUND` | Element does not exist, includes `hint` to refresh page info |
+| `NAVIGATION_TIMEOUT` | Page load timed out, may retry |
+| `SESSION_NOT_FOUND` | Session does not exist |
+| `PAGE_CRASHED` | Page crashed or was closed |
+| `INVALID_PARAMETER` | Invalid parameter value |
+| `EXECUTION_ERROR` | JavaScript execution error |
 
 ## REST API
 
