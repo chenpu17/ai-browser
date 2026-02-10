@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Task Result - AI Browser</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; background: #0d1117; color: #c9d1d9; }
+    .wrap { max-width: 1080px; margin: 24px auto; padding: 0 16px; }
+    .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    h1 { margin: 0; font-size: 24px; }
+    a { color: #58a6ff; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+    .meta { display: grid; grid-template-columns: 120px 1fr; row-gap: 8px; font-size: 14px; }
+    .key { color: #8b949e; }
+    pre { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; overflow: auto; max-height: 420px; }
+    .status-running { color: #58a6ff; }
+    .status-done { color: #3fb950; }
+    .error { color: #ff7b72; white-space: pre-wrap; margin-top: 12px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <h1>Task Result</h1>
+      <a href="/tasks.html">+ New Task</a>
+    </div>
+
+    <div class="card" style="margin-bottom: 16px;">
+      <div class="meta">
+        <div class="key">taskId</div><div id="taskId">-</div>
+        <div class="key">traceId</div><div id="traceId">-</div>
+        <div class="key">status</div><div id="status">-</div>
+        <div class="key">updatedAt</div><div id="updatedAt">-</div>
+      </div>
+      <div id="error" class="error"></div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Latest Result</h3>
+        <pre id="resultView">{}</pre>
+      </div>
+      <div class="card">
+        <h3>Event Stream</h3>
+        <pre id="eventView">[]</pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const taskId = params.get('taskId');
+    const statusEl = document.getElementById('status');
+    const traceIdEl = document.getElementById('traceId');
+    const updatedAtEl = document.getElementById('updatedAt');
+    const taskIdEl = document.getElementById('taskId');
+    const errorEl = document.getElementById('error');
+    const resultView = document.getElementById('resultView');
+    const eventView = document.getElementById('eventView');
+
+    const events = [];
+    const MAX_EVENTS = 200;
+    let done = false;
+
+    if (!taskId) {
+      errorEl.textContent = 'Missing taskId in query string.';
+      throw new Error('Missing taskId');
+    }
+
+    taskIdEl.textContent = taskId;
+
+    function renderEvents() {
+      eventView.textContent = JSON.stringify(events, null, 2);
+      eventView.scrollTop = eventView.scrollHeight;
+    }
+
+    function renderStatus(data) {
+      statusEl.textContent = data.status || '-';
+      statusEl.className = data.status === 'done' ? 'status-done' : 'status-running';
+      traceIdEl.textContent = data.traceId || '-';
+      updatedAtEl.textContent = data.updatedAt ? new Date(data.updatedAt).toISOString() : '-';
+      resultView.textContent = JSON.stringify(data.result ?? null, null, 2);
+      errorEl.textContent = data.error || '';
+    }
+
+    async function pollStatus() {
+      if (done) return;
+      try {
+        const resp = await fetch(`/v1/tasks/${encodeURIComponent(taskId)}`);
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(JSON.stringify(data, null, 2));
+        renderStatus(data);
+        if (data.status === 'done') {
+          done = true;
+        }
+      } catch (err) {
+        errorEl.textContent = err.message || String(err);
+      } finally {
+        if (!done) {
+          setTimeout(pollStatus, 1000);
+        }
+      }
+    }
+
+    const es = new EventSource(`/v1/tasks/${encodeURIComponent(taskId)}/events`);
+    es.onmessage = (evt) => {
+      try {
+        const parsed = JSON.parse(evt.data);
+        events.push(parsed);
+        if (events.length > MAX_EVENTS) events.shift();
+        renderEvents();
+        if (parsed.type === 'done') {
+          done = true;
+          es.close();
+          pollStatus();
+        }
+      } catch {
+        // ignore malformed chunks
+      }
+    };
+    es.onerror = () => {
+      if (!done) {
+        errorEl.textContent = 'SSE disconnected, falling back to polling updates.';
+        es.close();
+        pollStatus();
+      }
+    };
+
+    pollStatus();
+  </script>
+</body>
+</html>

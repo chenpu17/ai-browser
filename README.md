@@ -33,6 +33,10 @@ Open `http://localhost:3000` — the homepage provides a semantic analysis demo 
 
 Click **Settings** in the Agent page to set your LLM API key, base URL, and model. The Agent supports any OpenAI-compatible API.
 
+Task-oriented pages:
+- `http://localhost:3000/tasks.html` — submit TaskAgent tasks
+- `http://localhost:3000/task-result.html?taskId=...` — inspect task status/result/event stream
+
 ### 3. Use with Claude Desktop (stdio MCP)
 
 Add to your `claude_desktop_config.json`:
@@ -251,8 +255,29 @@ Error responses include an `errorCode` field for programmatic handling:
 | `GET` | `/v1/sessions/:id/tabs` | List all tabs |
 | `POST` | `/v1/agent/run` | Start an agent task |
 | `GET` | `/v1/agent/:id/events` | SSE stream of agent events |
+| `POST` | `/v1/tasks` | Submit a TaskAgent task |
+| `GET` | `/v1/tasks/:taskId` | Query task status and result |
+| `GET` | `/v1/tasks/:taskId/events` | SSE stream of task events |
 | `GET` | `/mcp/sse` | SSE MCP connection |
 | `POST` | `/mcp/message` | SSE MCP message endpoint |
+
+
+## Task API Quick Start
+
+Submit a task:
+
+```bash
+curl -sX POST http://127.0.0.1:3000/v1/tasks \
+  -H 'content-type: application/json' \
+  -d '{
+    "goal": "Batch extract page summaries",
+    "inputs": { "urls": ["https://example.com"] },
+    "constraints": { "maxDurationMs": 30000, "maxSteps": 20 },
+    "budget": { "maxRetries": 1, "maxToolCalls": 120 }
+  }'
+```
+
+Then poll status by `taskId` (`GET /v1/tasks/:taskId`) or subscribe to events (`GET /v1/tasks/:taskId/events`).
 
 ## Headless / Headful Mode
 
@@ -272,7 +297,7 @@ AI Browser uses a **trust level** system to control security policies across dif
 
 | Level | Entry Point | Description |
 |-------|-------------|-------------|
-| `local` | stdio MCP (`ai-browser-mcp`), Agent API | Full access — allows `file:` URLs, no private IP blocking |
+| `local` | stdio MCP (`ai-browser-mcp`), Agent API, Task API (`/v1/tasks`) | Full access — allows `file:` URLs, no private IP blocking |
 | `remote` | SSE MCP (`/mcp/sse`) | Restricted — blocks private/loopback IPs, DNS rebinding protection, disables `upload_file` and `execute_javascript` |
 
 ### SSE Endpoint Restrictions (remote mode)
@@ -305,10 +330,12 @@ AI Browser is designed as a **single-user local tool**. All sessions share a sin
 git clone https://github.com/chenpu17/ai-browser.git
 cd ai-browser
 npm install
-npm run dev      # Dev server with hot reload
-npm run build    # Build TypeScript
-npm test         # Run tests
-npm run test:run # Run tests once
+npm run dev         # Dev server with hot reload
+npm run build       # Build TypeScript
+npm test            # Run tests
+npm run test:run    # Run tests once
+npm run baseline:v1 # Collect v1 baseline report
+npm run stress:v1   # Run 100-task stress report
 ```
 
 ## License

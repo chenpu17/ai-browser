@@ -33,6 +33,10 @@ ai-browser --port 8080
 
 在 Agent 页面点击 **Settings**，设置 LLM API Key、Base URL 和模型名称。支持任何 OpenAI 兼容的 API。
 
+任务型页面：
+- `http://localhost:3000/tasks.html` — 提交 TaskAgent 任务
+- `http://localhost:3000/task-result.html?taskId=...` — 查看任务状态/结果/事件流
+
 ### 3. 接入 Claude Desktop（stdio MCP）
 
 在 `claude_desktop_config.json` 中添加：
@@ -251,8 +255,29 @@ import {
 | `GET` | `/v1/sessions/:id/tabs` | 列出所有标签页 |
 | `POST` | `/v1/agent/run` | 启动 Agent 任务 |
 | `GET` | `/v1/agent/:id/events` | Agent 事件 SSE 流 |
+| `POST` | `/v1/tasks` | 提交 TaskAgent 任务 |
+| `GET` | `/v1/tasks/:taskId` | 查询任务状态与结果 |
+| `GET` | `/v1/tasks/:taskId/events` | 任务事件 SSE 流 |
 | `GET` | `/mcp/sse` | SSE MCP 连接 |
 | `POST` | `/mcp/message` | SSE MCP 消息端点 |
+
+
+## Task API 快速开始
+
+提交任务：
+
+```bash
+curl -sX POST http://127.0.0.1:3000/v1/tasks \
+  -H 'content-type: application/json' \
+  -d '{
+    "goal": "批量提取页面摘要",
+    "inputs": { "urls": ["https://example.com"] },
+    "constraints": { "maxDurationMs": 30000, "maxSteps": 20 },
+    "budget": { "maxRetries": 1, "maxToolCalls": 120 }
+  }'
+```
+
+然后通过 `taskId` 轮询状态（`GET /v1/tasks/:taskId`）或订阅 SSE 事件流（`GET /v1/tasks/:taskId/events`）。
 
 ## Headless / Headful 模式
 
@@ -272,7 +297,7 @@ AI Browser 使用**信任级别**系统来控制不同入口的安全策略。
 
 | 级别 | 入口 | 说明 |
 |------|------|------|
-| `local` | stdio MCP (`ai-browser-mcp`)、Agent API | 完全访问 — 允许 `file:` 协议，不阻止私网 IP |
+| `local` | stdio MCP (`ai-browser-mcp`)、Agent API、Task API（`/v1/tasks`） | 完全访问 — 允许 `file:` 协议，不阻止私网 IP |
 | `remote` | SSE MCP (`/mcp/sse`) | 受限模式 — 阻止私网/回环 IP、DNS 重绑定防护、禁用 `upload_file` 和 `execute_javascript` |
 
 ### SSE 端点限制（remote 模式）
@@ -305,10 +330,12 @@ AI Browser 设计为**单用户本地工具**，所有会话共享同一个 Cook
 git clone https://github.com/chenpu17/ai-browser.git
 cd ai-browser
 npm install
-npm run dev      # 开发服务（热重载）
-npm run build    # 编译 TypeScript
-npm test         # 运行测试
-npm run test:run # 单次运行测试
+npm run dev         # 开发服务（热重载）
+npm run build       # 编译 TypeScript
+npm test            # 运行测试
+npm run test:run    # 单次运行测试
+npm run baseline:v1 # 采集 v1 基线报告
+npm run stress:v1   # 执行 100 任务压测报告
 ```
 
 ## 许可证

@@ -1,0 +1,91 @@
+{
+  "generatedAt": "2026-02-10T15:04:47.258Z",
+  "total": 10,
+  "successCount": 10,
+  "successRate": 1,
+  "avgTtdMs": 1068,
+  "noHumanRate": 1,
+  "durationMs": 12250,
+  "results": [
+    {
+      "id": "batch_article_1",
+      "success": true,
+      "taskId": "d0711014-f6df-4f7d-a147-e505bcb26c3b",
+      "traceId": "trace_18cb0d29-b419-4f54-a745-da80411a53fc",
+      "ttdMs": 1059,
+      "noHumanIntervention": true
+    },
+    {
+      "id": "batch_form_1",
+      "success": true,
+      "taskId": "b4c5c266-bf3e-4688-9eae-74348a055a09",
+      "traceId": "trace_5d272235-3149-43d6-9af8-daccabf5c81d",
+      "ttdMs": 1072,
+      "noHumanIntervention": true
+    },
+    {
+      "id": "batch_select_1",
+      "success": true,
+      "taskId": "aef918c1-2fb1-4bf2-8b79-e566fa444e39",
+      "traceId": "trace_787f1d39-4fa0-46d7-b803-0f26eb9782c9",
+      "ttdMs": 1070,
+      "noHumanIntervention": true
+    },
+    {
+      "id": "batch_long_1",
+      "success": true,
+      "taskId": "6988f228-a396-4d8a-aee3-2225377d6801",
+      "traceId": "trace_438719d5-a4b4-4ab0-b2fe-5afbee761cd2",
+      "ttdMs": 1064,
+      "noHumanIntervention": true
+    },
+    {
+      "id": "compare_article_form",
+      "success": true,
+      "taskId": "2d290c7d-cd49-4b22-8a8b-ae2a65e74dcf",
+      "traceId": "trace_8b61b869-be9e-4a25-a69d-b43624fac17d",
+      "ttdMs": 1063,
+      "noHumanIntervention": true
+    },
+    {
+      "id": "compare_form_select",
+      "success": true,
+      "taskId": "c0b212b5-9370-4777-8b5e-67d2e6729bb0",
+      "traceId": "trace_0ff23611-19e0-459b-8f7f-bd4b1f2d542b",
+      "ttdMs": 1077,
+      "noHumanIntervention": true
+    },
+    {
+      "id": "batch_2_urls",
+      "success": true,
+      "taskId": "7c05894e-5d2f-43f9-a5dd-f715d4b804ec",
+      "traceId": "trace_8050ea9b-a126-459b-be26-8063ce01378c",
+      "ttdMs": 1071,
+      "noHumanIntervention": true
+    },
+    {
+      "id": "batch_3_urls",
+      "success": true,
+      "taskId": "ed6c82e4-c8f9-44da-9eb0-7e0fa373455a",
+      "traceId": "trace_a9984326-a702-419c-92ea-50d8f493d44f",
+      "ttdMs": 1072,
+      "noHumanIntervention": true
+    },
+    {
+      "id": "compare_article_long",
+      "success": true,
+      "taskId": "e9797f29-e7b5-4006-a051-82776cd57d98",
+      "traceId": "trace_65837b83-9cf3-41bd-8295-d668c0b7e4f8",
+      "ttdMs": 1065,
+      "noHumanIntervention": true
+    },
+    {
+      "id": "batch_login_page",
+      "success": true,
+      "taskId": "51e1f165-a6a0-4601-ab2a-fd7461ffbfe0",
+      "traceId": "trace_f3f0ce54-6892-4dd8-b058-f56a7a8c0e16",
+      "ttdMs": 1063,
+      "noHumanIntervention": true
+    }
+  ]
+}

@@ -13,6 +13,7 @@ import {
 } from '../semantic/index.js';
 import { ApiError, ErrorCode } from './errors.js';
 import { BrowsingAgent } from '../agent/agent-loop.js';
+import { TaskAgent, type TaskSpec } from '../agent/task-agent.js';
 import { createBrowserMcpServer } from '../mcp/browser-mcp-server.js';
 import { CookieStore } from '../browser/CookieStore.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -596,6 +597,7 @@ export function registerRoutes(
         entry.finished = true;
         if (entry.cleanupTimer) clearTimeout(entry.cleanupTimer);
         entry.cleanupTimer = setTimeout(() => runningAgents.delete(agentId), AGENT_CLEANUP_DELAY);
+        entry.cleanupTimer.unref?.();
       }
     });
 
@@ -610,8 +612,10 @@ export function registerRoutes(
       }
       try { await mcpClient.close(); } catch {}
       try { await mcpServer.close(); } catch {}
-      setTimeout(() => runningAgents.delete(agentId), AGENT_CLEANUP_DELAY);
+      const deleteTimer = setTimeout(() => runningAgents.delete(agentId), AGENT_CLEANUP_DELAY);
+      deleteTimer.unref?.();
     }, AGENT_HARD_TIMEOUT);
+    entry.cleanupTimer.unref?.();
 
     // Fire-and-forget with error handling + MCP cleanup
     agent.run(task).catch((err) => {
@@ -692,4 +696,281 @@ export function registerRoutes(
 
     return { success: true };
   });
+
+  // ========== TaskAgent API (v1) ==========
+
+  interface TaskEntry {
+    taskAgent: TaskAgent;
+    buffer: any[];
+    finished: boolean;
+    status: 'running' | 'done';
+    traceId: string;
+    createdAt: number;
+    updatedAt: number;
+    result?: any;
+    error?: string;
+    hardTimeoutTimer?: ReturnType<typeof setTimeout>;
+    cleanupTimer?: ReturnType<typeof setTimeout>;
+    closeResources: () => Promise<void>;
+  }
+
+  const runningTasks = new Map<string, TaskEntry>();
+
+  function normalizeTaskEvent(taskId: string, fallbackTraceId: string, event: any) {
+    const raw = event && typeof event === 'object'
+      ? event
+      : { type: 'unknown_event', value: event };
+
+    return {
+      ...raw,
+      taskId,
+      traceId: raw.traceId || fallbackTraceId,
+      ts: raw.ts || new Date().toISOString(),
+    };
+  }
+
+  app.post('/v1/tasks', async (request) => {
+    const {
+      taskSpec: rawTaskSpec,
+      goal,
+      inputs,
+      constraints,
+      budget,
+      outputSchema,
+      apiKey,
+      baseURL,
+      model,
+      messages,
+      maxIterations,
+      headless,
+    } = request.body as any;
+
+    const taskSpec: TaskSpec = rawTaskSpec && typeof rawTaskSpec === 'object'
+      ? rawTaskSpec
+      : { goal, inputs, constraints, budget, outputSchema };
+
+    if (!taskSpec?.goal || typeof taskSpec.goal !== 'string') {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, 'taskSpec.goal is required', 400);
+    }
+
+    const activeAgents = [...runningAgents.values()].filter((e) => !e.finished).length;
+    const activeTasks = [...runningTasks.values()].filter((e) => !e.finished).length;
+    if (activeAgents + activeTasks >= MAX_CONCURRENT_AGENTS) {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, `Max ${MAX_CONCURRENT_AGENTS} concurrent task/agent runs`, 429);
+    }
+
+    let mcpServer: any | undefined;
+    let mcpClient: Client | undefined;
+    let resourcesClosed = false;
+    const closeResources = async () => {
+      if (resourcesClosed) return;
+      resourcesClosed = true;
+      if (mcpClient) {
+        try { await mcpClient.close(); } catch {}
+      }
+      if (mcpServer) {
+        try { await mcpServer.close(); } catch {}
+      }
+    };
+
+    try {
+      const mcpHeadless = headless !== undefined ? { headless: headless as boolean } : {};
+      mcpServer = createBrowserMcpServer(sessionManager, cookieStore, {
+        ...mcpHeadless,
+        trustLevel: 'local',
+      });
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      await mcpServer.connect(serverTransport);
+      mcpClient = new Client({ name: 'task-agent', version: '0.1.0' });
+      await mcpClient.connect(clientTransport);
+
+      let taskAgent!: TaskAgent;
+      const runAgentGoal = async (goalText: string) => {
+        const nestedAgent = new BrowsingAgent({
+          apiKey: apiKey || undefined,
+          baseURL: baseURL || undefined,
+          model: model || undefined,
+          mcpClient: mcpClient!,
+          maxIterations: maxIterations || undefined,
+          initialMessages: messages || undefined,
+        });
+
+        const forwardEvent = (event: any) => {
+          taskAgent.emit('event', {
+            type: 'agent_event',
+            event,
+          });
+        };
+        nestedAgent.on('event', forwardEvent);
+
+        try {
+          const result = await nestedAgent.run(goalText);
+          return {
+            success: result.success,
+            result: result.result,
+            error: result.error,
+            iterations: result.iterations,
+          };
+        } finally {
+          nestedAgent.removeListener('event', forwardEvent);
+        }
+      };
+
+      taskAgent = new TaskAgent({
+        mcpClient: mcpClient,
+        runAgentGoal,
+      });
+
+      const taskId = taskSpec.taskId || randomUUID();
+      const traceId = taskAgent.resetTraceId();
+      const entry: TaskEntry = {
+        taskAgent,
+        buffer: [],
+        finished: false,
+        status: 'running',
+        traceId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        closeResources,
+      };
+
+      taskAgent.on('event', (event: any) => {
+        const normalized = normalizeTaskEvent(taskId, entry.traceId, event);
+        entry.buffer.push(normalized);
+        entry.updatedAt = Date.now();
+        entry.traceId = normalized.traceId;
+
+        if (normalized.type !== 'done') return;
+
+        entry.finished = true;
+        entry.status = 'done';
+        if (entry.hardTimeoutTimer) {
+          clearTimeout(entry.hardTimeoutTimer);
+          entry.hardTimeoutTimer = undefined;
+        }
+        if (entry.cleanupTimer) clearTimeout(entry.cleanupTimer);
+        entry.cleanupTimer = setTimeout(() => runningTasks.delete(taskId), AGENT_CLEANUP_DELAY);
+        entry.cleanupTimer.unref?.();
+        void entry.closeResources();
+      });
+
+      runningTasks.set(taskId, entry);
+
+      entry.hardTimeoutTimer = setTimeout(() => {
+        if (entry.finished) return;
+        entry.error = 'Task timeout';
+        entry.updatedAt = Date.now();
+        taskAgent.emit('event', {
+          type: 'done',
+          success: false,
+          error: 'Task timeout',
+          iterations: 0,
+        });
+      }, AGENT_HARD_TIMEOUT);
+      entry.hardTimeoutTimer.unref?.();
+
+      void taskAgent.run(taskSpec)
+        .then((result) => {
+          entry.result = result;
+          entry.error = result.error;
+          entry.updatedAt = Date.now();
+          // TaskAgent.run emits done in finalize(); this guard only handles rare edge paths.
+          if (!entry.finished) {
+            taskAgent.emit('event', {
+              type: 'done',
+              success: result.success,
+              runId: result.runId,
+              summary: result.summary,
+              error: result.error,
+              iterations: result.iterations,
+            });
+          }
+        })
+        .catch((err: any) => {
+          entry.error = err?.message || 'Task execution failed';
+          entry.updatedAt = Date.now();
+          if (!entry.finished) {
+            taskAgent.emit('event', {
+              type: 'done',
+              success: false,
+              error: entry.error,
+              iterations: 0,
+            });
+          }
+        });
+
+      return {
+        taskId,
+        traceId: entry.traceId,
+        status: entry.status,
+      };
+    } catch (err) {
+      await closeResources();
+      throw err;
+    }
+  });
+
+
+  app.get('/v1/tasks/:taskId', async (request) => {
+    const { taskId } = request.params as any;
+    const entry = runningTasks.get(taskId);
+    if (!entry) {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, 'Task not found', 404);
+    }
+
+    const lastEvent = entry.buffer.length > 0 ? entry.buffer[entry.buffer.length - 1] : null;
+    return {
+      taskId,
+      status: entry.status,
+      traceId: entry.traceId,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+      lastEvent,
+      result: entry.result,
+      error: entry.error,
+    };
+  });
+
+  app.get('/v1/tasks/:taskId/events', (request, reply) => {
+    const { taskId } = request.params as any;
+    const entry = runningTasks.get(taskId);
+
+    if (!entry) {
+      reply.status(404).send({ error: { code: 'INVALID_REQUEST', message: 'Task not found' } });
+      return;
+    }
+
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+
+    const onEvent = (event: any) => {
+      const liveEvent = event && typeof event === 'object'
+        ? ({ ...event, taskId })
+        : { taskId, type: 'unknown_event', value: event, ts: new Date().toISOString(), traceId: entry.traceId };
+      reply.raw.write(`data: ${JSON.stringify(liveEvent)}\n\n`);
+      if (liveEvent.type === 'done') {
+        reply.raw.end();
+      }
+    };
+
+    for (const event of entry.buffer) {
+      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+    }
+
+    if (entry.finished) {
+      reply.raw.end();
+      return;
+    }
+
+    entry.taskAgent.on('event', onEvent);
+
+    request.raw.on('close', () => {
+      entry.taskAgent.removeListener('event', onEvent);
+    });
+  });
+
 }

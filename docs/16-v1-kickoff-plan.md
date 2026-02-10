@@ -1,6 +1,6 @@
 # v1 开发启动计划（Kickoff）
 
-> 状态：In Progress
+> 状态：Completed
 > 依据：`docs/13-intelligent-browser-terminal-prd-v1-draft.md`、`docs/14-v1-mcp-contract-v1.md`、`docs/15-v1-agent-implementation-plan.md`
 
 ## 1. 目标
@@ -14,8 +14,8 @@
   - [x] 文档冻结：PRD / MCP 契约 / Agent 实施计划
   - [x] TaskAgent 骨架代码落地（Planner / Verifier / repair 钩子）
   - [x] TaskAgent 基础单测
-  - [ ] 基线采集脚本与基线数据（成功率/TTD/无人工介入率）
-  - [ ] `/v1/tasks` API 草案实现（最小可用）
+  - [x] 基线采集脚本与基线数据（成功率/TTD/无人工介入率）
+  - [x] `/v1/tasks` API 草案实现（最小可用）
 
 ## 3. 当前已启动开发项
 
@@ -47,4 +47,16 @@
 - [x] 代码可构建
 - [x] TaskAgent 单测通过
 - [x] 现有 contract 测试无回归
-- [ ] 新任务入口最小链路可跑通
+- [x] 新任务入口最小链路可跑通
+
+
+## 7. 基线结果（首轮）
+
+- 报告脚本：`npm run baseline:v1`
+- 报告文件：`docs/reports/v1-baseline.json`、`docs/reports/v1-baseline.md`
+- 当前结果（2026-02-10）：
+  - 成功率：100.0%（10/10）
+  - 平均 TTD：1068ms
+  - 无人工介入率：100.0%
+
+- 压测报告：`docs/reports/v1-stress-100.json`、`docs/reports/v1-stress-100.md`
