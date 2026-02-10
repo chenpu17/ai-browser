@@ -9,9 +9,6 @@ export interface BrowserOptions {
   timeout?: number;
 }
 
-const DEFAULT_USER_AGENT =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
-
 export class BrowserManager {
   private headlessBrowser: Browser | null = null;
   private headfulBrowser: Browser | null = null;
@@ -65,11 +62,13 @@ export class BrowserManager {
       '--disable-setuid-sandbox',
       '--disable-blink-features=AutomationControlled',
       '--disable-infobars',
-      `--user-agent=${options.userAgent || DEFAULT_USER_AGENT}`,
     ];
 
     if (proxyServer) {
       args.push(`--proxy-server=${proxyServer}`);
+    }
+    if (options.userAgent) {
+      args.push('--user-agent=' + options.userAgent);
     }
 
     return puppeteer.launch({ executablePath, headless, args });
