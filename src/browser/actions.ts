@@ -1,4 +1,4 @@
-import { Page } from 'puppeteer';
+import { Page } from 'puppeteer-core';
 
 export function escapeCSS(str: string): string {
   return str.replace(/["\\]/g, '\\$&');

@@ -1,4 +1,4 @@
-import { Page } from 'puppeteer';
+import { Page } from 'puppeteer-core';
 
 export interface ContentSection {
   tag: string;        // 语义标签：h1, h2, p, li, blockquote 等

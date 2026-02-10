@@ -3,750 +3,1996 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Browser - 语义输出展示</title>
+  <title>AI Browser</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background: #0d1117;
-      color: #c9d1d9;
-      min-height: 100vh;
-    }
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-    h1 {
-      color: #58a6ff;
-      margin-bottom: 20px;
-    }
-    .input-section {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 20px;
-    }
-    input[type="text"] {
-      flex: 1;
-      padding: 12px 16px;
-      font-size: 16px;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      background: #161b22;
-      color: #c9d1d9;
-    }
-    input[type="text"]:focus {
-      outline: none;
-      border-color: #58a6ff;
-    }
-    button {
-      padding: 12px 24px;
-      font-size: 16px;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .btn-primary {
-      background: #238636;
-      color: white;
-    }
-    .btn-primary:hover {
-      background: #2ea043;
-    }
-    .btn-primary:disabled {
-      background: #21262d;
-      color: #484f58;
-      cursor: not-allowed;
-    }
-    .output-container {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-    }
-    @media (max-width: 900px) {
-      .output-container {
-        grid-template-columns: 1fr;
-      }
-    }
-    .panel {
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      overflow: hidden;
-    }
-    .panel-header {
-      background: #21262d;
-      padding: 12px 16px;
-      border-bottom: 1px solid #30363d;
-      font-weight: 600;
-    }
-    .panel-body {
-      padding: 16px;
-      max-height: 600px;
-      overflow: auto;
-    }
-    .markdown-body {
-      background: transparent !important;
-      color: #c9d1d9 !important;
-    }
-    .markdown-body pre {
-      background: #0d1117 !important;
-    }
-    .markdown-body code {
-      background: #21262d !important;
-    }
-    .raw-output {
-      font-family: 'Monaco', 'Menlo', monospace;
-      font-size: 13px;
-      white-space: pre-wrap;
-      word-break: break-all;
-      color: #8b949e;
-    }
-    .status {
-      padding: 10px 16px;
-      border-radius: 6px;
-      margin-bottom: 20px;
-    }
-    .status-loading {
-      background: #1f2937;
-      color: #60a5fa;
-    }
-    .status-success {
-      background: #064e3b;
-      color: #34d399;
-    }
-    .status-error {
-      background: #7f1d1d;
-      color: #fca5a5;
-    }
-    .hidden { display: none !important; }
-    .stats {
-      display: flex;
-      gap: 20px;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
-    }
-    .stat-card {
-      background: #21262d;
-      padding: 16px 24px;
-      border-radius: 6px;
-      text-align: center;
-    }
-    .stat-value {
-      font-size: 28px;
-      font-weight: bold;
-      color: #58a6ff;
-    }
-    .stat-label {
-      font-size: 12px;
-      color: #8b949e;
-      margin-top: 4px;
-    }
-    .tabs {
-      display: flex;
-      gap: 4px;
-      margin-bottom: 20px;
-      border-bottom: 1px solid #30363d;
-      padding-bottom: 10px;
-    }
-    .tab {
-      padding: 8px 16px;
-      background: transparent;
-      color: #8b949e;
-      border: 1px solid transparent;
-      border-radius: 6px 6px 0 0;
-    }
-    .tab.active {
-      background: #21262d;
-      color: #58a6ff;
-      border-color: #30363d;
-      border-bottom-color: #21262d;
-    }
-    .tab:hover:not(.active) {
-      color: #c9d1d9;
-    }
-    .element-list {
-      max-height: 500px;
-      overflow-y: auto;
-    }
-    .element-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 12px;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      margin-bottom: 8px;
-      background: #0d1117;
-      transition: all 0.2s;
-    }
-    .element-item:hover {
-      border-color: #58a6ff;
-      background: #161b22;
-    }
-    .element-info {
-      flex: 1;
-      min-width: 0;
-    }
-    .element-type {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: 600;
-      margin-right: 8px;
-    }
-    .element-type.button { background: #238636; color: white; }
-    .element-type.link { background: #1f6feb; color: white; }
-    .element-type.textbox { background: #8957e5; color: white; }
-    .element-type.checkbox { background: #f78166; color: white; }
-    .element-label {
-      font-weight: 500;
-      color: #c9d1d9;
-    }
-    .element-id {
-      font-size: 11px;
-      color: #6e7681;
-      font-family: monospace;
-      margin-top: 4px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .element-actions {
-      display: flex;
-      gap: 6px;
-    }
-    .btn-action {
-      padding: 6px 12px;
-      font-size: 12px;
-      background: #21262d;
-      color: #c9d1d9;
-      border: 1px solid #30363d;
-    }
-    .btn-action:hover {
-      background: #30363d;
-      border-color: #58a6ff;
-    }
-    .btn-action.btn-click { border-color: #238636; }
-    .btn-action.btn-click:hover { background: #238636; }
-    .btn-action.btn-type { border-color: #8957e5; }
-    .btn-action.btn-type:hover { background: #8957e5; }
-    .action-log {
-      background: #0d1117;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      padding: 12px;
-      max-height: 200px;
-      overflow-y: auto;
-      font-family: monospace;
-      font-size: 12px;
-      margin-top: 16px;
-    }
-    .log-entry {
-      padding: 4px 0;
-      border-bottom: 1px solid #21262d;
-    }
-    .log-entry:last-child { border-bottom: none; }
-    .log-time { color: #6e7681; }
-    .log-success { color: #3fb950; }
-    .log-error { color: #f85149; }
-    .log-info { color: #58a6ff; }
-    .type-input-modal {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0,0,0,0.8);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-    }
-    .modal-content {
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      padding: 24px;
-      width: 400px;
-    }
-    .modal-title {
-      font-size: 18px;
-      font-weight: 600;
-      margin-bottom: 16px;
-    }
-    .modal-input {
-      width: 100%;
-      padding: 10px;
-      margin-bottom: 16px;
-    }
-    .modal-buttons {
-      display: flex;
-      gap: 10px;
-      justify-content: flex-end;
-    }
-    .btn-secondary {
-      background: #21262d;
-      color: #c9d1d9;
-    }
-    .filter-bar {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 12px;
-      flex-wrap: wrap;
-    }
-    .filter-btn {
-      padding: 4px 12px;
-      font-size: 12px;
-      background: #21262d;
-      color: #8b949e;
-      border: 1px solid #30363d;
-    }
-    .filter-btn.active {
-      background: #388bfd;
-      color: white;
-      border-color: #388bfd;
-    }
-    .current-page {
-      background: #21262d;
-      padding: 12px 16px;
-      border-radius: 6px;
-      margin-bottom: 20px;
-      font-size: 14px;
-    }
-    .current-page a {
-      color: #58a6ff;
-      text-decoration: none;
-      word-break: break-all;
-    }
-    .current-page a:hover {
-      text-decoration: underline;
-    }
+/* ===== CSS Design System ===== */
+:root {
+  --bg-canvas: #0d1117;
+  --bg-surface: #161b22;
+  --bg-overlay: #21262d;
+  --border: #30363d;
+  --text-primary: #c9d1d9;
+  --text-secondary: #8b949e;
+  --text-muted: #484f58;
+  --accent: #58a6ff;
+  --green: #238636;
+  --green-hover: #2ea043;
+  --red: #da3633;
+  --blue: #1f6feb;
+  --purple: #8957e5;
+  --orange: #f78166;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  --transition: 150ms ease;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ===== Header / Nav ===== */
+.app-header {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  height: 48px;
+  flex-shrink: 0;
+  gap: 16px;
+}
+.app-logo {
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  letter-spacing: -0.3px;
+}
+.nav-tabs {
+  display: flex;
+  gap: 2px;
+  margin-left: 8px;
+}
+.nav-tab {
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition);
+  position: relative;
+}
+.nav-tab:hover { color: var(--text-primary); background: var(--bg-overlay); }
+.nav-tab.active {
+  color: var(--accent);
+  background: rgba(88,166,255,0.1);
+}
+.nav-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+}
+.header-right {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* ===== Shared Button Styles ===== */
+.btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-weight: 500;
+  transition: all var(--transition);
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn-primary {
+  background: var(--green);
+  color: #fff;
+  border-color: var(--green);
+}
+.btn-primary:hover { background: var(--green-hover); border-color: var(--green-hover); color: #fff; }
+.btn-primary:disabled {
+  background: var(--bg-overlay);
+  color: var(--text-muted);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+.btn-danger { border-color: var(--red); color: var(--red); }
+.btn-danger:hover { background: var(--red); color: #fff; }
+.btn-send {
+  padding: 10px 20px;
+  background: var(--green);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-send:hover { background: var(--green-hover); }
+.btn-send:disabled { background: var(--bg-overlay); color: var(--text-muted); cursor: not-allowed; }
+
+/* ===== Main Layout ===== */
+.app-main {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+.view {
+  display: none;
+  position: absolute;
+  inset: 0;
+  flex-direction: column;
+}
+.view.active {
+  display: flex;
+  animation: viewFadeIn 200ms ease;
+}
+@keyframes viewFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ===== Shared Modal ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal-overlay.hidden { display: none; }
+.modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  width: 440px;
+  max-width: 90vw;
+}
+.modal h2 { font-size: 16px; color: var(--text-primary); margin-bottom: 16px; }
+.modal label {
+  display: block;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  margin-top: 12px;
+}
+.modal label:first-of-type { margin-top: 0; }
+.modal input[type="text"],
+.modal input[type="password"],
+.modal input[type="number"] {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  outline: none;
+}
+.modal input:focus { border-color: var(--accent); }
+.modal-btns {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+.btn-save { background: var(--green); color: #fff; border-color: var(--green); }
+.btn-save:hover { background: var(--green-hover); color: #fff; }
+
+/* ===== Shared Markdown ===== */
+.markdown-body {
+  background: transparent !important;
+  color: var(--text-primary) !important;
+}
+.markdown-body pre { background: var(--bg-surface) !important; }
+.markdown-body code { background: var(--bg-overlay) !important; }
+.markdown-body table { font-size: 13px; }
+</style>
+<style>
+/* ===== Semantic View Styles ===== */
+#view-semantic .sem-toolbar {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 20px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+#view-semantic .sem-toolbar input[type="text"] {
+  flex: 1;
+  padding: 8px 14px;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  outline: none;
+}
+#view-semantic .sem-toolbar input:focus { border-color: var(--accent); }
+
+.sem-stats-bar {
+  background: var(--bg-overlay);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 20px;
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.sem-stats-bar .stat-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sem-stats-bar .stat-val {
+  color: var(--accent);
+  font-weight: 600;
+}
+.sem-stats-bar.hidden { display: none; }
+
+.sem-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  padding-bottom: 28px;
+}
+.sem-left {
+  width: 60%;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+.sem-right {
+  width: 40%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sem-content-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  flex-shrink: 0;
+}
+.sem-content-tab {
+  padding: 4px 12px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.sem-content-tab.active { background: var(--bg-overlay); color: var(--accent); border-color: var(--accent); }
+
+.sem-content-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.sem-right-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  flex-shrink: 0;
+}
+
+.sem-right-area {
+  flex: 1;
+  overflow: auto;
+}
+.sem-right-area.screenshot-mode {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #010409;
+  padding: 12px;
+}
+.sem-right-area img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.sem-right-area .raw-output {
+  padding: 16px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-secondary);
+}
+
+/* Element list */
+.element-list { padding: 0; }
+.element-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 6px;
+  background: var(--bg-canvas);
+  transition: all 0.15s;
+}
+.element-item:hover { border-color: var(--accent); background: var(--bg-surface); }
+.element-info { flex: 1; min-width: 0; }
+.element-type {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  margin-right: 8px;
+}
+.element-type.button { background: var(--green); color: white; }
+.element-type.link { background: var(--blue); color: white; }
+.element-type.textbox { background: var(--purple); color: white; }
+.element-type.checkbox { background: var(--orange); color: white; }
+.element-label { font-weight: 500; color: var(--text-primary); font-size: 13px; }
+.element-id {
+  font-size: 11px;
+  color: #6e7681;
+  font-family: monospace;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.element-actions { display: flex; gap: 4px; }
+.btn-action {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.btn-action:hover { background: var(--border); }
+.btn-action.btn-click { border-color: var(--green); }
+.btn-action.btn-click:hover { background: var(--green); color: #fff; }
+.btn-action.btn-type { border-color: var(--purple); }
+.btn-action.btn-type:hover { background: var(--purple); color: #fff; }
+
+.filter-bar {
+  display: flex;
+  gap: 6px;
+  padding: 8px 16px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  flex-shrink: 0;
+}
+.filter-bar.hidden { display: none; }
+.filter-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+  background: var(--bg-overlay);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.filter-btn.active { background: var(--blue); color: white; border-color: var(--blue); }
+
+/* Log drawer */
+.sem-log-drawer {
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  flex-shrink: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 200ms ease;
+}
+.sem-log-drawer.open { max-height: 180px; }
+.sem-log-toggle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  background: var(--bg-overlay);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-secondary);
+  z-index: 2;
+}
+.sem-log-toggle:hover { color: var(--text-primary); }
+.sem-log-entries {
+  padding: 8px 16px;
+  overflow-y: auto;
+  max-height: 150px;
+  font-family: monospace;
+  font-size: 12px;
+}
+.log-entry { padding: 3px 0; border-bottom: 1px solid var(--bg-overlay); }
+.log-entry:last-child { border-bottom: none; }
+.log-time { color: #6e7681; }
+.log-success { color: #3fb950; }
+.log-error { color: #f85149; }
+.log-info { color: var(--accent); }
+
+.sem-status {
+  padding: 6px 20px;
+  font-size: 12px;
+  flex-shrink: 0;
+  display: none;
+}
+.sem-status.visible { display: block; }
+.sem-status.loading { background: #1f2937; color: #60a5fa; }
+.sem-status.success { background: #064e3b; color: #34d399; }
+.sem-status.error { background: #7f1d1d; color: #fca5a5; }
+
+.placeholder-text {
+  color: var(--text-muted);
+  font-size: 14px;
+  text-align: center;
+  padding: 40px 20px;
+}
+</style>
+<style>
+/* ===== Agent View Styles ===== */
+#view-agent .agent-main { display: flex; flex: 1; overflow: hidden; }
+
+.chat-panel {
+  width: 50%;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+}
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+.chat-input-bar {
+  border-top: 1px solid var(--border);
+  padding: 12px 16px;
+  display: flex;
+  gap: 8px;
+  background: var(--bg-surface);
+}
+.chat-input-bar input {
+  flex: 1;
+  padding: 10px 14px;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  outline: none;
+}
+.chat-input-bar input:focus { border-color: var(--accent); }
+
+/* Preview panel */
+.preview-panel {
+  width: 50%;
+  display: flex;
+  flex-direction: column;
+}
+.preview-header {
+  background: var(--bg-surface);
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.preview-tabs { display: flex; gap: 4px; }
+.preview-tab {
+  padding: 4px 14px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.preview-tab.active { background: var(--bg-overlay); color: var(--accent); border-color: var(--accent); }
+.preview-url {
+  font-size: 12px;
+  color: var(--accent);
+  margin-left: auto;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preview-body {
+  flex: 1;
+  overflow: auto;
+  background: var(--bg-canvas);
+}
+.preview-body.screenshot-mode {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #010409;
+  padding: 12px;
+}
+.preview-body img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+/* Markdown preview areas */
+.md-current { padding: 16px; }
+.md-history {
+  border-top: 1px solid var(--border);
+  padding: 8px 16px;
+}
+.md-history-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+.md-history-toggle {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-surface);
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.md-history-toggle:hover { color: var(--text-primary); }
+.md-history-toggle .arrow { transition: transform 0.2s; }
+.md-history-toggle.open .arrow { transform: rotate(90deg); }
+.md-history-content {
+  display: none;
+  padding: 12px;
+  max-height: 300px;
+  overflow: auto;
+}
+.md-history-content.open { display: block; }
+.md-history-content .markdown-body { font-size: 13px; }
+
+/* Chat message styles */
+.msg { margin-bottom: 10px; }
+.msg-user { text-align: right; }
+.msg-user .bubble {
+  display: inline-block;
+  background: var(--blue);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 12px 12px 2px 12px;
+  max-width: 85%;
+  text-align: left;
+  font-size: 14px;
+  animation: fadeIn 200ms ease;
+}
+.msg-system {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 4px 0;
+}
+.msg-thinking {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-style: italic;
+  animation: fadeIn 200ms ease;
+}
+.msg-thinking .markdown-body { font-style: normal; font-size: 13px; }
+.msg .md-inline { font-style: normal; }
+.msg-tool-call {
+  background: var(--bg-canvas);
+  border: 1px solid var(--blue);
+  border-radius: var(--radius-lg);
+  padding: 8px 12px;
+  font-size: 13px;
+  animation: fadeIn 200ms ease;
+}
+.msg-tool-call .tool-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.msg-tool-call .tool-icon {
+  font-size: 12px;
+  color: var(--accent);
+}
+.msg-tool-call .label { color: var(--accent); font-weight: 600; }
+.msg-tool-call pre {
+  margin: 4px 0 0;
+  color: var(--text-primary);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Collapsible tool result */
+.msg-tool-result {
+  background: var(--bg-canvas);
+  border-radius: var(--radius-lg);
+  padding: 8px 12px;
+  font-size: 13px;
+  animation: fadeIn 200ms ease;
+}
+.msg-tool-result.success { border: 1px solid var(--green); }
+.msg-tool-result.fail { border: 1px solid var(--red); }
+.msg-tool-result .result-content {
+  max-height: 120px;
+  overflow: hidden;
+  position: relative;
+  transition: max-height 200ms ease;
+}
+.msg-tool-result .result-content.expanded { max-height: none; }
+.msg-tool-result .result-content.needs-expand::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  background: linear-gradient(transparent, var(--bg-canvas));
+  pointer-events: none;
+}
+.msg-tool-result .result-content.expanded::after { display: none; }
+.msg-tool-result .expand-btn {
+  display: none;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--accent);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 2px 0;
+}
+.msg-tool-result .expand-btn.visible { display: inline-block; }
+.msg-tool-result pre {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.msg-error {
+  background: #1c0c0c;
+  border: 1px solid var(--red);
+  border-radius: var(--radius-lg);
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #fca5a5;
+  animation: fadeIn 200ms ease;
+}
+.msg-done {
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 14px;
+  animation: fadeIn 200ms ease;
+}
+.msg-done.success { background: #0a2e1a; border: 2px solid var(--green); }
+.msg-done.fail { background: #2d0a0a; border: 2px solid var(--red); }
+.msg-done .title { font-weight: 700; margin-bottom: 4px; }
+.msg-done .markdown-body { font-size: 14px; }
+
+.step-tag {
+  display: inline-block;
+  background: var(--bg-overlay);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-right: 6px;
+  font-style: normal;
+}
+
+/* Typing indicator */
+.typing-indicator {
+  display: none;
+  padding: 8px 0;
+}
+.typing-indicator.visible { display: flex; gap: 4px; align-items: center; padding-left: 4px; }
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  animation: typingBounce 1.2s infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Type input modal (semantic view) */
+.type-input-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.type-input-modal.hidden { display: none; }
+.type-input-modal .modal-content {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: 400px;
+}
+.type-input-modal .modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.type-input-modal .modal-input {
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  outline: none;
+  margin-bottom: 16px;
+}
+.type-input-modal .modal-input:focus { border-color: var(--accent); }
+.type-input-modal .modal-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 900px) {
+  .sem-body { flex-direction: column; padding-bottom: 28px; }
+  .sem-left, .sem-right { width: 100%; border-right: none; }
+  .sem-right { border-top: 1px solid var(--border); }
+  #view-agent .agent-main { flex-direction: column; }
+  .chat-panel, .preview-panel { width: 100%; border-right: none; }
+  .preview-panel { border-top: 1px solid var(--border); }
+}
   </style>
 </head>
 <body>
-  <div class="container">
-    <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">
-      <h1 style="margin-bottom:0">🌐 AI Browser - 语义输出展示</h1>
-      <a href="/agent.html" style="padding:8px 16px;background:#1f6feb;color:#fff;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500;">测试 Agent</a>
+<!-- ===== Header ===== -->
+<header class="app-header">
+  <span class="app-logo">AI Browser</span>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="switchView('semantic')">Semantic</button>
+    <button class="nav-tab" onclick="switchView('agent')">Agent</button>
+  </div>
+  <div class="header-right" id="headerRight">
+    <button class="btn" id="btnCloseSession" style="display:none" onclick="Sem.closeSession()">Close Session</button>
+    <button class="btn btn-danger" id="btnStop" style="display:none" onclick="Agent.stop()">Stop</button>
+    <button class="btn" id="btnClear" style="display:none" onclick="Agent.clearChat()">Clear</button>
+    <button class="btn" id="btnSettings" onclick="openSettings()">Settings</button>
+  </div>
+</header>
+
+<!-- ===== Main ===== -->
+<main class="app-main">
+  <!-- Semantic View -->
+  <div id="view-semantic" class="view active">
+    <!-- Toolbar -->
+    <div class="sem-toolbar">
+      <input type="text" id="semUrlInput" placeholder="Enter URL, e.g. https://www.baidu.com" value="https://www.baidu.com">
+      <button class="btn btn-primary" id="semAnalyzeBtn" onclick="Sem.analyze()">Analyze</button>
+      <button class="btn" id="semRefreshBtn" style="display:none" onclick="Sem.refreshElements()">Refresh</button>
+      <button class="btn" id="semSendToAgent" style="display:none" onclick="sendToAgent()">Send to Agent</button>
     </div>
 
-    <div class="input-section">
-      <input type="text" id="urlInput" placeholder="输入网站URL，例如: https://www.baidu.com" value="https://www.baidu.com">
-      <button class="btn-primary" id="analyzeBtn" onclick="analyze()">分析网站</button>
-      <button class="btn-secondary" id="refreshBtn" onclick="refreshElements()" style="display:none">刷新元素</button>
-      <button class="btn-secondary" id="closeBtn" onclick="closeSession()" style="display:none">关闭会话</button>
+    <!-- Status bar -->
+    <div class="sem-status" id="semStatus"></div>
+
+    <!-- Current page info -->
+    <div class="sem-stats-bar hidden" id="semCurrentPage" style="gap:8px;">
+      <span style="color:var(--text-secondary)">Current:</span>
+      <a id="semCurrentUrl" href="#" target="_blank" style="color:var(--accent);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%;"></a>
+      <span id="semCurrentTitle" style="color:var(--text-secondary);"></span>
     </div>
 
-    <div id="status" class="status hidden"></div>
+    <!-- Stats bar -->
+    <div class="sem-stats-bar hidden" id="semStatsBar"></div>
 
-    <div id="currentPage" class="current-page" style="display:none">
-      <span>📍 当前页面：</span>
-      <a id="currentUrl" href="#" target="_blank"></a>
-      <span id="currentTitle" style="color:#8b949e;margin-left:10px"></span>
-    </div>
-
-    <div id="stats" class="stats hidden"></div>
-
-    <div class="tabs" id="tabs" style="display:none">
-      <button class="tab active" onclick="switchTab('markdown')">Markdown输出</button>
-      <button class="tab" onclick="switchTab('elements')">可交互元素</button>
-    </div>
-
-    <div id="markdownTab">
-      <div class="output-container">
-        <div class="panel">
-          <div class="panel-header">📝 Markdown 渲染效果</div>
-          <div class="panel-body">
-            <div id="markdownOutput" class="markdown-body"></div>
-          </div>
+    <!-- Body: left + right columns -->
+    <div class="sem-body">
+      <!-- Left column (60%) -->
+      <div class="sem-left">
+        <div class="sem-content-tabs">
+          <button class="sem-content-tab active" onclick="Sem.switchLeftTab('markdown', this)">Markdown</button>
+          <button class="sem-content-tab" onclick="Sem.switchLeftTab('elements', this)">Elements</button>
         </div>
-        <div class="panel">
-          <div class="panel-header">📄 Markdown 原始内容</div>
-          <div class="panel-body">
-            <div id="rawOutput" class="raw-output"></div>
-          </div>
+        <div class="filter-bar hidden" id="semFilterBar"></div>
+        <div class="sem-content-area" id="semLeftContent">
+          <div class="placeholder-text">Enter a URL and click Analyze to start</div>
+        </div>
+      </div>
+
+      <!-- Right column (40%) -->
+      <div class="sem-right">
+        <div class="sem-right-tabs" id="semRightTabs">
+          <button class="sem-content-tab active" onclick="Sem.switchRightTab('screenshot', this)">Screenshot</button>
+          <button class="sem-content-tab" onclick="Sem.switchRightTab('raw', this)">Raw Markdown</button>
+        </div>
+        <div class="sem-right-area" id="semRightContent">
+          <div class="placeholder-text">Waiting for analysis...</div>
         </div>
       </div>
     </div>
 
-    <div id="elementsTab" style="display:none">
-      <div class="filter-bar" id="filterBar" style="display:none"></div>
-      <div class="element-list" id="elementList"></div>
+    <!-- Log drawer toggle -->
+    <div class="sem-log-toggle" onclick="Sem.toggleLog()">
+      <span id="semLogToggleText">Show Log (0)</span>
+    </div>
+    <div class="sem-log-drawer" id="semLogDrawer">
+      <div class="sem-log-entries" id="semLogEntries"></div>
     </div>
   </div>
 
-  <div class="container">
-    <div class="action-log" id="actionLog" style="display:none">
-      <div style="color:#8b949e;margin-bottom:8px">📋 操作日志</div>
-      <div id="logEntries"></div>
-    </div>
-  </div>
+  <!-- Agent View -->
+  <div id="view-agent" class="view">
+    <div class="agent-main">
+      <!-- Left: Chat -->
+      <div class="chat-panel">
+        <div class="chat-messages" id="chatMessages">
+          <div class="placeholder-text">Enter a task to start</div>
+        </div>
+        <div class="typing-indicator" id="typingIndicator">
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+        </div>
+        <div class="chat-input-bar">
+          <input type="text" id="taskInput" placeholder="Enter a task, e.g.: Open Baidu and search for weather">
+          <button class="btn-send" id="sendBtn" onclick="Agent.start()">Send</button>
+        </div>
+      </div>
 
-  <div id="typeModal" class="type-input-modal hidden">
-    <div class="modal-content">
-      <div class="modal-title">输入内容</div>
-      <input type="text" id="typeValue" class="modal-input" placeholder="请输入要填写的内容">
-      <div class="modal-buttons">
-        <button class="btn-secondary" onclick="closeTypeModal()">取消</button>
-        <button class="btn-primary" onclick="confirmType()">确认输入</button>
+      <!-- Right: Preview -->
+      <div class="preview-panel">
+        <div class="preview-header">
+          <div class="preview-tabs">
+            <button class="preview-tab active" id="agentTabMd" onclick="Agent.switchPreview('markdown')">Markdown</button>
+            <button class="preview-tab" id="agentTabSs" onclick="Agent.switchPreview('screenshot')">Screenshot</button>
+          </div>
+          <button class="btn" id="agentViewElements" style="display:none" onclick="viewElementsFromAgent()">View Elements</button>
+          <span class="preview-url" id="previewUrl"></span>
+        </div>
+        <div class="preview-body" id="previewBody">
+          <div class="placeholder-text">Waiting for Agent output...</div>
+        </div>
       </div>
     </div>
   </div>
+</main>
 
-  <script>
-    let sessionId = null;
-    let currentElements = [];
-    let currentFilter = 'all';
-    let pendingTypeElementId = null;
-    const API_BASE = '';
+<!-- ===== Settings Modal (shared) ===== -->
+<div class="modal-overlay hidden" id="settingsModal">
+  <div class="modal">
+    <h2>Model Settings</h2>
+    <label>Base URL</label>
+    <input type="text" id="cfgBaseURL" placeholder="https://api.openai.com/v1">
+    <label>Model</label>
+    <input type="text" id="cfgModel" placeholder="gpt-4">
+    <label>API Key</label>
+    <input type="password" id="cfgApiKey" placeholder="sk-...">
+    <label>Max Iterations</label>
+    <input type="number" id="cfgMaxIterations" placeholder="Default (server-controlled)" min="1" max="1000">
+    <label style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer;">
+      <input type="checkbox" id="cfgHeadless" checked style="width:auto;cursor:pointer;">
+      Headless Mode
+      <span style="color:var(--text-muted);font-size:12px;">(Turn off to see browser window for manual login)</span>
+    </label>
+    <div class="modal-btns">
+      <button class="btn" onclick="closeSettings()">Cancel</button>
+      <button class="btn btn-save" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
 
-    function showStatus(message, type) {
-      const status = document.getElementById('status');
-      status.className = `status status-${type}`;
-      status.textContent = message;
-      status.classList.remove('hidden');
-    }
+<!-- ===== Type Input Modal (semantic view) ===== -->
+<div id="typeModal" class="type-input-modal hidden">
+  <div class="modal-content">
+    <div class="modal-title">Type Text</div>
+    <input type="text" id="typeValue" class="modal-input" placeholder="Enter text to type">
+    <div class="modal-buttons">
+      <button class="btn" onclick="Sem.closeTypeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="Sem.confirmType()">Confirm</button>
+    </div>
+  </div>
+</div>
 
-    function hideStatus() {
-      document.getElementById('status').classList.add('hidden');
-    }
+<script>
+// ========== Shared State ==========
+var App = {
+  currentView: 'semantic',
+  sharedSessionId: null,
+};
 
-    function addLog(message, type = 'info') {
-      const log = document.getElementById('actionLog');
-      const entries = document.getElementById('logEntries');
-      log.style.display = 'block';
-      const time = new Date().toLocaleTimeString();
-      entries.innerHTML = `<div class="log-entry"><span class="log-time">[${time}]</span> <span class="log-${type}">${message}</span></div>` + entries.innerHTML;
-    }
+// ========== Shared Utilities ==========
+function esc(s) {
+  var d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
 
-    function switchTab(tab) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      event.target.classList.add('active');
-      document.getElementById('elementsTab').style.display = tab === 'elements' ? 'block' : 'none';
-      document.getElementById('markdownTab').style.display = tab === 'markdown' ? 'block' : 'none';
-    }
+function safeMd(s) {
+  return DOMPurify.sanitize(marked.parse(s || ''));
+}
 
-    function updateCurrentPage(url, title) {
-      const container = document.getElementById('currentPage');
-      const urlEl = document.getElementById('currentUrl');
-      const titleEl = document.getElementById('currentTitle');
-      container.style.display = 'block';
-      urlEl.href = url;
-      urlEl.textContent = url;
-      titleEl.textContent = title ? `- ${title}` : '';
-    }
+// ========== Settings (localStorage, shared) ==========
+var SETTINGS_KEY = 'ai_browser_agent_settings';
 
-    function renderElements(elements) {
-      currentElements = elements;
-      const filtered = currentFilter === 'all' ? elements : elements.filter(e => e.type === currentFilter);
-      const list = document.getElementById('elementList');
+function loadSettings() {
+  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; }
+  catch(e) { return {}; }
+}
 
-      if (filtered.length === 0) {
-        list.innerHTML = '<div style="color:#8b949e;padding:20px;text-align:center">没有找到元素</div>';
-        return;
+function openSettings() {
+  var s = loadSettings();
+  document.getElementById('cfgBaseURL').value = s.baseURL || '';
+  document.getElementById('cfgModel').value = s.model || '';
+  document.getElementById('cfgApiKey').value = s.apiKey || '';
+  document.getElementById('cfgMaxIterations').value = s.maxIterations || '';
+  document.getElementById('cfgHeadless').checked = s.headless !== false;
+  document.getElementById('settingsModal').classList.remove('hidden');
+}
+
+function closeSettings() {
+  document.getElementById('settingsModal').classList.add('hidden');
+}
+
+function saveSettings() {
+  var settings = {
+    baseURL: document.getElementById('cfgBaseURL').value.trim(),
+    model: document.getElementById('cfgModel').value.trim(),
+    apiKey: document.getElementById('cfgApiKey').value.trim(),
+    maxIterations: parseInt(document.getElementById('cfgMaxIterations').value) || 0,
+    headless: document.getElementById('cfgHeadless').checked,
+  };
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  closeSettings();
+}
+
+// ========== Navigation ==========
+function switchView(view) {
+  App.currentView = view;
+  location.hash = view;
+  document.getElementById('view-semantic').classList.toggle('active', view === 'semantic');
+  document.getElementById('view-agent').classList.toggle('active', view === 'agent');
+  // Update nav tabs
+  document.querySelectorAll('.nav-tab').forEach(function(tab) {
+    tab.classList.toggle('active', tab.textContent.toLowerCase() === view);
+  });
+  updateHeaderButtons();
+}
+
+function updateHeaderButtons() {
+  var view = App.currentView;
+  // Semantic buttons
+  document.getElementById('btnCloseSession').style.display =
+    (view === 'semantic' && Sem.sessionId) ? 'inline-block' : 'none';
+  // Agent buttons
+  document.getElementById('btnStop').style.display =
+    (view === 'agent' && Agent.agentId) ? 'inline-block' : 'none';
+  document.getElementById('btnClear').style.display =
+    (view === 'agent') ? 'inline-block' : 'none';
+  // Settings always visible
+}
+
+// Hash routing
+window.addEventListener('hashchange', function() {
+  var hash = location.hash.replace('#', '');
+  var view = (hash === 'agent') ? 'agent' : 'semantic';
+  if (view !== App.currentView) switchView(view);
+});
+
+// Session sharing: Semantic -> Agent
+function sendToAgent() {
+  if (Sem.sessionId) {
+    App.sharedSessionId = Sem.sessionId;
+  }
+  switchView('agent');
+}
+
+// Session sharing: Agent -> Semantic (view elements)
+function viewElementsFromAgent() {
+  if (Agent.sessionId) {
+    App.sharedSessionId = Agent.sessionId;
+  }
+  switchView('semantic');
+}
+
+// Close modal on overlay click
+document.getElementById('settingsModal').addEventListener('click', function(e) {
+  if (e.target === this) closeSettings();
+});
+</script>
+
+<script>
+// ========== Semantic View ==========
+var Sem = {
+  sessionId: null,
+  currentElements: [],
+  currentFilter: 'all',
+  pendingTypeElementId: null,
+  leftTab: 'markdown',
+  rightTab: 'screenshot',
+  rawMarkdown: '',
+  screenshotHtml: '',
+  logCount: 0,
+
+  showStatus: function(msg, type) {
+    var el = document.getElementById('semStatus');
+    el.className = 'sem-status visible ' + type;
+    el.textContent = msg;
+  },
+
+  hideStatus: function() {
+    document.getElementById('semStatus').className = 'sem-status';
+  },
+
+  addLog: function(message, type) {
+    type = type || 'info';
+    this.logCount++;
+    var entries = document.getElementById('semLogEntries');
+    var time = new Date().toLocaleTimeString();
+    entries.innerHTML = '<div class="log-entry"><span class="log-time">[' + time + ']</span> <span class="log-' + esc(type) + '">' + esc(message) + '</span></div>' + entries.innerHTML;
+    document.getElementById('semLogToggleText').textContent = 'Show Log (' + this.logCount + ')';
+  },
+
+  toggleLog: function() {
+    var drawer = document.getElementById('semLogDrawer');
+    drawer.classList.toggle('open');
+    var isOpen = drawer.classList.contains('open');
+    document.getElementById('semLogToggleText').textContent =
+      (isOpen ? 'Hide' : 'Show') + ' Log (' + this.logCount + ')';
+  },
+
+  switchLeftTab: function(tab, btn) {
+    this.leftTab = tab;
+    btn.parentElement.querySelectorAll('.sem-content-tab').forEach(function(t) { t.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById('semFilterBar').classList.toggle('hidden', tab !== 'elements');
+    this.renderLeftContent();
+  },
+
+  switchRightTab: function(tab, btn) {
+    this.rightTab = tab;
+    btn.parentElement.querySelectorAll('.sem-content-tab').forEach(function(t) { t.classList.remove('active'); });
+    btn.classList.add('active');
+    this.renderRightContent();
+  },
+
+  renderLeftContent: function() {
+    var area = document.getElementById('semLeftContent');
+    if (this.leftTab === 'markdown') {
+      if (!this.rawMarkdown) {
+        area.innerHTML = '<div class="placeholder-text">Enter a URL and click Analyze to start</div>';
+      } else {
+        area.innerHTML = '<div class="markdown-body">' + safeMd(this.rawMarkdown) + '</div>';
       }
+    } else {
+      this.renderElements(area);
+    }
+  },
 
-      list.innerHTML = filtered.map(el => {
-        const label = el.label || '(无标签)';
-        const actions = el.actions || ['click'];
-        const actionBtns = actions.map(a => {
-          if (a === 'click') return `<button class="btn-action btn-click" onclick="doAction('click','${el.id}')">点击</button>`;
-          if (a === 'type') return `<button class="btn-action btn-type" onclick="showTypeModal('${el.id}')">输入</button>`;
-          return '';
-        }).join('');
+  renderRightContent: function() {
+    var area = document.getElementById('semRightContent');
+    if (this.rightTab === 'screenshot') {
+      if (this.screenshotHtml) {
+        area.className = 'sem-right-area screenshot-mode';
+        area.innerHTML = this.screenshotHtml;
+      } else {
+        area.className = 'sem-right-area';
+        area.innerHTML = '<div class="placeholder-text">Waiting for screenshot...</div>';
+      }
+    } else {
+      area.className = 'sem-right-area';
+      if (this.rawMarkdown) {
+        area.innerHTML = '<div class="raw-output">' + esc(this.rawMarkdown) + '</div>';
+      } else {
+        area.innerHTML = '<div class="placeholder-text">Waiting for analysis...</div>';
+      }
+    }
+  },
 
-        return `
-          <div class="element-item">
-            <div class="element-info">
-              <span class="element-type ${el.type}">${el.type}</span>
-              <span class="element-label">${label}</span>
-              <div class="element-id">${el.id}</div>
-            </div>
-            <div class="element-actions">${actionBtns}</div>
-          </div>
-        `;
+  renderElements: function(container) {
+    var elements = this.currentElements;
+    var filtered = this.currentFilter === 'all' ? elements : elements.filter(function(e) { return e.type === Sem.currentFilter; });
+    if (!container) container = document.getElementById('semLeftContent');
+
+    if (filtered.length === 0) {
+      container.innerHTML = '<div class="placeholder-text">No elements found</div>';
+      return;
+    }
+
+    container.innerHTML = '<div class="element-list">' + filtered.map(function(el) {
+      var label = el.label || '(no label)';
+      var actions = el.actions || ['click'];
+      var safeId = esc(el.id).replace(/'/g, '&#39;');
+      var actionBtns = actions.map(function(a) {
+        if (a === 'click') return '<button class="btn-action btn-click" data-sem-action="click" data-sem-id="' + safeId + '">Click</button>';
+        if (a === 'type') return '<button class="btn-action btn-type" data-sem-action="type" data-sem-id="' + safeId + '">Type</button>';
+        return '';
       }).join('');
-    }
 
-    function renderFilterBar(elements) {
-      const types = [...new Set(elements.map(e => e.type))];
-      const bar = document.getElementById('filterBar');
-      bar.style.display = 'flex';
-      bar.innerHTML = `<button class="filter-btn ${currentFilter === 'all' ? 'active' : ''}" onclick="setFilter('all')">全部 (${elements.length})</button>` +
-        types.map(t => {
-          const count = elements.filter(e => e.type === t).length;
-          return `<button class="filter-btn ${currentFilter === t ? 'active' : ''}" onclick="setFilter('${t}')">${t} (${count})</button>`;
-        }).join('');
-    }
+      return '<div class="element-item">' +
+        '<div class="element-info">' +
+        '<span class="element-type ' + el.type + '">' + el.type + '</span>' +
+        '<span class="element-label">' + esc(label) + '</span>' +
+        '<div class="element-id">' + esc(el.id) + '</div>' +
+        '</div>' +
+        '<div class="element-actions">' + actionBtns + '</div>' +
+        '</div>';
+    }).join('') + '</div>';
+  },
 
-    function setFilter(type) {
-      currentFilter = type;
-      renderFilterBar(currentElements);
-      renderElements(currentElements);
-    }
+  renderFilterBar: function() {
+    var elements = this.currentElements;
+    var types = [];
+    var seen = {};
+    elements.forEach(function(e) { if (!seen[e.type]) { seen[e.type] = true; types.push(e.type); } });
+    var bar = document.getElementById('semFilterBar');
+    bar.classList.remove('hidden');
+    bar.innerHTML = '<button class="filter-btn ' + (this.currentFilter === 'all' ? 'active' : '') + '" data-filter="all">All (' + elements.length + ')</button>' +
+      types.map(function(t) {
+        var count = elements.filter(function(e) { return e.type === t; }).length;
+        return '<button class="filter-btn ' + (Sem.currentFilter === t ? 'active' : '') + '" data-filter="' + esc(t) + '">' + esc(t) + ' (' + count + ')</button>';
+      }).join('');
+  },
 
-    async function doAction(action, elementId, value) {
-      try {
-        addLog(`执行 ${action} 操作: ${elementId}`, 'info');
-        const res = await fetch(`${API_BASE}/v1/sessions/${sessionId}/action`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action, elementId, value })
-        });
-        const data = await res.json();
-        if (data.success) {
-          addLog(`✓ 成功! 页面: ${data.page?.title || '-'}`, 'success');
-          updateCurrentPage(data.page?.url || '', data.page?.title || '');
-          setTimeout(refreshElements, 800);
-        } else {
-          addLog(`✗ 失败: ${data.error?.message || '未知错误'}`, 'error');
+  setFilter: function(type) {
+    this.currentFilter = type;
+    this.renderFilterBar();
+    if (this.leftTab === 'elements') this.renderLeftContent();
+  },
+
+  showStats: function(semData) {
+    var elements = semData.elements || [];
+    var typeCount = {};
+    elements.forEach(function(el) { typeCount[el.type] = (typeCount[el.type] || 0) + 1; });
+
+    var bar = document.getElementById('semStatsBar');
+    bar.classList.remove('hidden');
+    bar.innerHTML =
+      '<div class="stat-item"><span class="stat-val">' + elements.length + '</span> elements</div>' +
+      '<div class="stat-item"><span class="stat-val">' + (typeCount.button || 0) + '</span> buttons</div>' +
+      '<div class="stat-item"><span class="stat-val">' + (typeCount.link || 0) + '</span> links</div>' +
+      '<div class="stat-item"><span class="stat-val">' + (typeCount.textbox || 0) + '</span> inputs</div>' +
+      '<div class="stat-item"><span class="stat-val">' + (semData.regions || []).length + '</span> regions</div>';
+  },
+
+  updateCurrentPage: function(url, title) {
+    var container = document.getElementById('semCurrentPage');
+    var urlEl = document.getElementById('semCurrentUrl');
+    var titleEl = document.getElementById('semCurrentTitle');
+    container.classList.remove('hidden');
+    urlEl.href = url;
+    urlEl.textContent = url;
+    titleEl.textContent = title ? '- ' + title : '';
+  },
+
+  refreshScreenshot: function() {
+    if (!this.sessionId) return;
+    var self = this;
+    fetch('/v1/sessions/' + this.sessionId + '/screenshot')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.image) {
+          if (data.image && data.image.indexOf('data:image/') === 0) {
+            self.screenshotHtml = '<img src="' + data.image + '" alt="screenshot">';
+          }
+          if (self.rightTab === 'screenshot') self.renderRightContent();
         }
-      } catch (err) {
-        addLog(`✗ 网络错误: ${err.message}`, 'error');
+      }).catch(function() {});
+  },
+
+  doAction: function(action, elementId, value) {
+    var self = this;
+    self.addLog('Executing ' + action + ': ' + elementId, 'info');
+    fetch('/v1/sessions/' + self.sessionId + '/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: action, elementId: elementId, value: value })
+    }).then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.success) {
+        self.addLog('Success! Page: ' + (data.page?.title || '-'), 'success');
+        self.updateCurrentPage(data.page?.url || '', data.page?.title || '');
+        setTimeout(function() { self.refreshElements(); }, 800);
+      } else {
+        self.addLog('Failed: ' + (data.error?.message || 'Unknown error'), 'error');
       }
-    }
-
-    function showTypeModal(elementId) {
-      pendingTypeElementId = elementId;
-      document.getElementById('typeModal').classList.remove('hidden');
-      document.getElementById('typeValue').focus();
-    }
-
-    function closeTypeModal() {
-      document.getElementById('typeModal').classList.add('hidden');
-      document.getElementById('typeValue').value = '';
-      pendingTypeElementId = null;
-    }
-
-    function confirmType() {
-      const value = document.getElementById('typeValue').value;
-      if (pendingTypeElementId && value) {
-        doAction('type', pendingTypeElementId, value);
-      }
-      closeTypeModal();
-    }
-
-    async function refreshElements() {
-      try {
-        showStatus('刷新元素中...', 'loading');
-        const semRes = await fetch(`${API_BASE}/v1/sessions/${sessionId}/semantic`);
-        const semData = await semRes.json();
-        renderElements(semData.elements || []);
-        renderFilterBar(semData.elements || []);
-        showStats(semData);
-        showStatus(`已刷新，当前页面: ${semData.page?.title || '-'}`, 'success');
-      } catch (err) {
-        showStatus(`刷新失败: ${err.message}`, 'error');
-      }
-    }
-
-    async function closeSession() {
-      if (sessionId) {
-        await fetch(`${API_BASE}/v1/sessions/${sessionId}`, { method: 'DELETE' });
-        sessionId = null;
-        document.getElementById('refreshBtn').style.display = 'none';
-        document.getElementById('closeBtn').style.display = 'none';
-        document.getElementById('tabs').style.display = 'none';
-        document.getElementById('filterBar').style.display = 'none';
-        document.getElementById('elementList').innerHTML = '';
-        document.getElementById('actionLog').style.display = 'none';
-        showStatus('会话已关闭', 'success');
-      }
-    }
-
-    async function analyze() {
-      const url = document.getElementById('urlInput').value.trim();
-      if (!url) {
-        showStatus('请输入网站URL', 'error');
-        return;
-      }
-
-      const btn = document.getElementById('analyzeBtn');
-      btn.disabled = true;
-      btn.textContent = '分析中...';
-
-      try {
-        // 关闭旧会话
-        if (sessionId) {
-          await fetch(`${API_BASE}/v1/sessions/${sessionId}`, { method: 'DELETE' });
-        }
-
-        showStatus('正在创建浏览器会话...', 'loading');
-        const sessionRes = await fetch(`${API_BASE}/v1/sessions`, { method: 'POST' });
-        const sessionData = await sessionRes.json();
-        sessionId = sessionData.sessionId;
-
-        showStatus('正在导航到目标网站...', 'loading');
-        const navRes = await fetch(`${API_BASE}/v1/sessions/${sessionId}/navigate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url })
-        });
-        const navData = await navRes.json();
-
-        if (!navData.success) {
-          throw new Error(navData.error?.message || '导航失败');
-        }
-
-        showStatus('正在提取语义元素...', 'loading');
-        const semRes = await fetch(`${API_BASE}/v1/sessions/${sessionId}/semantic`);
-        const semData = await semRes.json();
-
-        const contentRes = await fetch(`${API_BASE}/v1/sessions/${sessionId}/content`);
-        const contentData = await contentRes.json();
-
-        // 显示元素列表
-        renderElements(semData.elements || []);
-        renderFilterBar(semData.elements || []);
-        showStats(semData);
-        updateCurrentPage(semData.page?.url || url, semData.page?.title || '');
-
-        // 生成Markdown
-        const markdown = generateMarkdown(url, navData, semData, contentData);
-        document.getElementById('rawOutput').textContent = markdown;
-        document.getElementById('markdownOutput').innerHTML = marked.parse(markdown);
-
-        // 显示控制按钮
-        document.getElementById('refreshBtn').style.display = 'inline-block';
-        document.getElementById('closeBtn').style.display = 'inline-block';
-        document.getElementById('tabs').style.display = 'flex';
-
-        showStatus('分析完成！点击元素可执行操作', 'success');
-        addLog(`已加载 ${semData.elements?.length || 0} 个元素`, 'success');
-
-      } catch (err) {
-        showStatus(`错误: ${err.message}`, 'error');
-        console.error(err);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = '分析网站';
-      }
-    }
-
-    function showStats(semData) {
-      const stats = document.getElementById('stats');
-      const elements = semData.elements || [];
-      const regions = semData.regions || [];
-
-      const typeCount = {};
-      elements.forEach(el => {
-        typeCount[el.type] = (typeCount[el.type] || 0) + 1;
-      });
-
-      stats.innerHTML = `
-        <div class="stat-card">
-          <div class="stat-value">${elements.length}</div>
-          <div class="stat-label">总元素数</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${typeCount.button || 0}</div>
-          <div class="stat-label">按钮</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${typeCount.link || 0}</div>
-          <div class="stat-label">链接</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${typeCount.textbox || 0}</div>
-          <div class="stat-label">输入框</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${regions.length}</div>
-          <div class="stat-label">区域</div>
-        </div>
-      `;
-      stats.classList.remove('hidden');
-    }
-
-    function generateMarkdown(url, navData, semData, contentData) {
-      const lines = [];
-
-      lines.push('# AI Browser 语义分析报告\n');
-      lines.push(`> 分析时间: ${new Date().toLocaleString()}\n`);
-
-      lines.push('## 📄 页面信息\n');
-      lines.push('| 属性 | 值 |');
-      lines.push('|------|-----|');
-      lines.push(`| URL | ${semData.page?.url || url} |`);
-      lines.push(`| 标题 | ${semData.page?.title || '-'} |`);
-      lines.push(`| 类型 | \`${semData.page?.type || 'unknown'}\` |`);
-      lines.push(`| 摘要 | ${semData.page?.summary || '-'} |`);
-      lines.push('');
-
-      // 元素统计
-      const elements = semData.elements || [];
-      const typeCount = {};
-      elements.forEach(el => {
-        typeCount[el.type] = (typeCount[el.type] || 0) + 1;
-      });
-
-      lines.push('## 📊 元素统计\n');
-      lines.push(`共收集 **${elements.length}** 个可交互元素：\n`);
-      lines.push('| 类型 | 数量 |');
-      lines.push('|------|------|');
-      Object.entries(typeCount).forEach(([type, count]) => {
-        lines.push(`| ${type} | ${count} |`);
-      });
-      lines.push('');
-
-      // 元素列表（前20个）
-      lines.push('## 🔗 元素列表（前20个）\n');
-      elements.slice(0, 20).forEach((el, i) => {
-        const label = el.label || '(无标签)';
-        const actions = el.actions?.join(', ') || '-';
-        lines.push(`${i + 1}. **[${el.type}]** ${label}`);
-        lines.push(`   - ID: \`${el.id}\``);
-        lines.push(`   - 操作: ${actions}`);
-        if (el.bounds && el.bounds.width > 0) {
-          lines.push(`   - 位置: (${Math.round(el.bounds.x)}, ${Math.round(el.bounds.y)}) ${Math.round(el.bounds.width)}x${Math.round(el.bounds.height)}`);
-        }
-        lines.push('');
-      });
-
-      // 区域信息
-      const regions = semData.regions || [];
-      if (regions.length > 0) {
-        lines.push('## 🗺️ 页面区域\n');
-        regions.forEach(region => {
-          lines.push(`- **${region.name}**: ${region.role || '-'}`);
-        });
-        lines.push('');
-      }
-
-      // 内容摘要
-      if (contentData) {
-        lines.push('## 📝 内容摘要\n');
-        if (contentData.title) {
-          lines.push(`**标题**: ${contentData.title}\n`);
-        }
-        if (contentData.text) {
-          const text = contentData.text.slice(0, 500).replace(/\n+/g, ' ').trim();
-          lines.push(`**文本预览**: ${text}${contentData.text.length > 500 ? '...' : ''}\n`);
-        }
-        if (contentData.links?.length > 0) {
-          lines.push(`**链接数**: ${contentData.links.length}\n`);
-        }
-      }
-
-      // JSON示例
-      lines.push('## 💻 JSON 输出示例\n');
-      lines.push('```json');
-      const sample = elements.slice(0, 3);
-      lines.push(JSON.stringify(sample, null, 2));
-      lines.push('```\n');
-
-      return lines.join('\n');
-    }
-
-    // 回车键触发分析
-    document.getElementById('urlInput').addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') analyze();
+    }).catch(function(err) {
+      self.addLog('Network error: ' + err.message, 'error');
     });
-  </script>
+  },
+
+  showTypeModal: function(elementId) {
+    this.pendingTypeElementId = elementId;
+    document.getElementById('typeModal').classList.remove('hidden');
+    document.getElementById('typeValue').focus();
+  },
+
+  closeTypeModal: function() {
+    document.getElementById('typeModal').classList.add('hidden');
+    document.getElementById('typeValue').value = '';
+    this.pendingTypeElementId = null;
+  },
+
+  confirmType: function() {
+    var value = document.getElementById('typeValue').value;
+    if (this.pendingTypeElementId && value) {
+      this.doAction('type', this.pendingTypeElementId, value);
+    }
+    this.closeTypeModal();
+  },
+
+  refreshElements: function() {
+    var self = this;
+    self.showStatus('Refreshing elements...', 'loading');
+    fetch('/v1/sessions/' + self.sessionId + '/semantic')
+      .then(function(r) { return r.json(); })
+      .then(function(semData) {
+        self.currentElements = semData.elements || [];
+        self.renderFilterBar();
+        if (self.leftTab === 'elements') self.renderLeftContent();
+        self.showStats(semData);
+        self.updateCurrentPage(semData.page?.url || '', semData.page?.title || '');
+        self.refreshScreenshot();
+        self.showStatus('Refreshed: ' + (semData.page?.title || '-'), 'success');
+      }).catch(function(err) {
+        self.showStatus('Refresh failed: ' + err.message, 'error');
+      });
+  },
+
+  closeSession: function() {
+    var self = this;
+    if (!self.sessionId) return;
+    fetch('/v1/sessions/' + self.sessionId, { method: 'DELETE' })
+      .then(function() {
+        self.sessionId = null;
+        self.currentElements = [];
+        self.rawMarkdown = '';
+        self.screenshotHtml = '';
+        document.getElementById('semStatsBar').classList.add('hidden');
+        document.getElementById('semCurrentPage').classList.add('hidden');
+        document.getElementById('semFilterBar').classList.add('hidden');
+        document.getElementById('semRefreshBtn').style.display = 'none';
+        document.getElementById('semSendToAgent').style.display = 'none';
+        self.renderLeftContent();
+        self.renderRightContent();
+        self.showStatus('Session closed', 'success');
+        updateHeaderButtons();
+      });
+  },
+
+  analyze: function() {
+    var self = this;
+    var url = document.getElementById('semUrlInput').value.trim();
+    if (!url) { self.showStatus('Please enter a URL', 'error'); return; }
+
+    var btn = document.getElementById('semAnalyzeBtn');
+    btn.disabled = true;
+    btn.textContent = 'Analyzing...';
+
+    // Close old session
+    var closePromise = self.sessionId
+      ? fetch('/v1/sessions/' + self.sessionId, { method: 'DELETE' })
+      : Promise.resolve();
+
+    closePromise.then(function() {
+      self.showStatus('Creating browser session...', 'loading');
+      var settings = loadSettings();
+      var sessionOpts = {};
+      if (settings.headless === false) sessionOpts.headless = false;
+      return fetch('/v1/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sessionOpts)
+      });
+    }).then(function(r) {
+      if (!r.ok) throw new Error('Failed to create session: ' + r.status);
+      return r.json();
+    })
+    .then(function(sessionData) {
+      self.sessionId = sessionData.sessionId;
+      self.showStatus('Navigating to target...', 'loading');
+      return fetch('/v1/sessions/' + self.sessionId + '/navigate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url })
+      });
+    }).then(function(r) { return r.json(); })
+    .then(function(navData) {
+      if (!navData.success) throw new Error(navData.error?.message || 'Navigation failed');
+      self.showStatus('Extracting semantic elements...', 'loading');
+      return Promise.all([
+        fetch('/v1/sessions/' + self.sessionId + '/semantic').then(function(r) { return r.json(); }),
+        fetch('/v1/sessions/' + self.sessionId + '/content').then(function(r) { return r.json(); })
+      ]);
+    }).then(function(results) {
+      var semData = results[0];
+      var contentData = results[1];
+
+      self.currentElements = semData.elements || [];
+      self.renderFilterBar();
+      self.showStats(semData);
+      self.updateCurrentPage(semData.page?.url || url, semData.page?.title || '');
+
+      self.rawMarkdown = self.generateMarkdown(url, semData, contentData);
+      self.renderLeftContent();
+      self.renderRightContent();
+      self.refreshScreenshot();
+
+      document.getElementById('semRefreshBtn').style.display = 'inline-block';
+      document.getElementById('semSendToAgent').style.display = 'inline-block';
+      updateHeaderButtons();
+
+      self.showStatus('Analysis complete!', 'success');
+      self.addLog('Loaded ' + (semData.elements?.length || 0) + ' elements', 'success');
+    }).catch(function(err) {
+      self.showStatus('Error: ' + err.message, 'error');
+    }).finally(function() {
+      btn.disabled = false;
+      btn.textContent = 'Analyze';
+    });
+  },
+
+  generateMarkdown: function(url, semData, contentData) {
+    var lines = [];
+    lines.push('# AI Browser Semantic Analysis\n');
+    lines.push('> Time: ' + new Date().toLocaleString() + '\n');
+
+    lines.push('## Page Info\n');
+    lines.push('| Property | Value |');
+    lines.push('|----------|-------|');
+    lines.push('| URL | ' + (semData.page?.url || url) + ' |');
+    lines.push('| Title | ' + (semData.page?.title || '-') + ' |');
+    lines.push('| Type | `' + (semData.page?.type || 'unknown') + '` |');
+    lines.push('| Summary | ' + (semData.page?.summary || '-') + ' |');
+    lines.push('');
+
+    var elements = semData.elements || [];
+    var typeCount = {};
+    elements.forEach(function(el) { typeCount[el.type] = (typeCount[el.type] || 0) + 1; });
+
+    lines.push('## Element Stats\n');
+    lines.push('Total **' + elements.length + '** interactive elements:\n');
+    lines.push('| Type | Count |');
+    lines.push('|------|-------|');
+    Object.keys(typeCount).forEach(function(type) {
+      lines.push('| ' + type + ' | ' + typeCount[type] + ' |');
+    });
+    lines.push('');
+
+    lines.push('## Elements (first 20)\n');
+    elements.slice(0, 20).forEach(function(el, i) {
+      var label = el.label || '(no label)';
+      var actions = el.actions?.join(', ') || '-';
+      lines.push((i + 1) + '. **[' + el.type + ']** ' + label);
+      lines.push('   - ID: `' + el.id + '`');
+      lines.push('   - Actions: ' + actions);
+      if (el.bounds && el.bounds.width > 0) {
+        lines.push('   - Position: (' + Math.round(el.bounds.x) + ', ' + Math.round(el.bounds.y) + ') ' + Math.round(el.bounds.width) + 'x' + Math.round(el.bounds.height));
+      }
+      lines.push('');
+    });
+
+    var regions = semData.regions || [];
+    if (regions.length > 0) {
+      lines.push('## Page Regions\n');
+      regions.forEach(function(region) {
+        lines.push('- **' + region.name + '**: ' + (region.role || '-'));
+      });
+      lines.push('');
+    }
+
+    if (contentData) {
+      lines.push('## Content Summary\n');
+      if (contentData.title) lines.push('**Title**: ' + contentData.title + '\n');
+      if (contentData.text) {
+        var text = contentData.text.slice(0, 500).replace(/\n+/g, ' ').trim();
+        lines.push('**Preview**: ' + text + (contentData.text.length > 500 ? '...' : '') + '\n');
+      }
+      if (contentData.links?.length > 0) lines.push('**Links**: ' + contentData.links.length + '\n');
+    }
+
+    lines.push('## JSON Sample\n');
+    lines.push('```json');
+    lines.push(JSON.stringify(elements.slice(0, 3), null, 2));
+    lines.push('```\n');
+
+    return lines.join('\n');
+  }
+};
+</script>
+
+<script>
+// ========== Agent View ==========
+var Agent = {
+  agentId: null,
+  sessionId: null,
+  eventSource: null,
+  previewMode: 'markdown',
+  mdHistory: [],
+  MAX_HISTORY: 10,
+  currentMdContent: null,
+  latestScreenshotHtml: '',
+  conversationHistory: [],
+  currentTask: '',
+
+  switchPreview: function(mode) {
+    this.previewMode = mode;
+    document.getElementById('agentTabMd').classList.toggle('active', mode === 'markdown');
+    document.getElementById('agentTabSs').classList.toggle('active', mode === 'screenshot');
+    this.renderPreview();
+  },
+
+  renderPreview: function() {
+    var body = document.getElementById('previewBody');
+    if (this.previewMode === 'screenshot') {
+      body.className = 'preview-body screenshot-mode';
+      body.innerHTML = this.latestScreenshotHtml || '<div class="placeholder-text">Waiting for screenshot...</div>';
+    } else {
+      body.className = 'preview-body';
+      this.renderMarkdownPreview(body);
+    }
+  },
+
+  renderMarkdownPreview: function(container) {
+    if (!this.currentMdContent && this.mdHistory.length === 0) {
+      container.innerHTML = '<div class="placeholder-text">Waiting for Agent output...</div>';
+      return;
+    }
+    var html = '';
+    if (this.currentMdContent) {
+      html += '<div class="md-current"><div class="markdown-body">' + safeMd(this.currentMdContent.content) + '</div></div>';
+    }
+    if (this.mdHistory.length > 0) {
+      html += '<div class="md-history"><div style="color:var(--text-muted);font-size:11px;margin-bottom:6px;">History (' + this.mdHistory.length + ')</div>';
+      for (var i = this.mdHistory.length - 1; i >= 0; i--) {
+        var item = this.mdHistory[i];
+        var id = 'hist_' + i;
+        html += '<div class="md-history-item"><button class="md-history-toggle" onclick="Agent.toggleHistory(\'' + id + '\', this)"><span class="arrow">&#9654;</span> <span>' + esc(item.label) + '</span></button><div class="md-history-content" id="' + id + '"><div class="markdown-body">' + safeMd(item.content) + '</div></div></div>';
+      }
+      html += '</div>';
+    }
+    container.innerHTML = html;
+  },
+
+  toggleHistory: function(id, btn) {
+    document.getElementById(id).classList.toggle('open');
+    btn.classList.toggle('open');
+  },
+
+  pushMdContent: function(label, content) {
+    if (this.currentMdContent) {
+      this.mdHistory.push(this.currentMdContent);
+      if (this.mdHistory.length > this.MAX_HISTORY) this.mdHistory.shift();
+    }
+    this.currentMdContent = { label: label, content: content };
+    if (this.previewMode === 'markdown') this.renderPreview();
+  },
+
+  _generation: 0,
+  _resultCounter: 0,
+
+  // ===== Agent lifecycle =====
+  start: function() {
+    var self = this;
+    var task = document.getElementById('taskInput').value.trim();
+    if (!task) return;
+
+    self._generation++;
+    var gen = self._generation;
+    var settings = loadSettings();
+
+    // Reset right panel
+    self.currentMdContent = null;
+    self.mdHistory = [];
+    self.latestScreenshotHtml = '';
+    document.getElementById('previewUrl').textContent = '';
+    self.renderPreview();
+
+    // Remove placeholder
+    var ph = document.getElementById('chatMessages').querySelector('.placeholder-text');
+    if (ph) ph.remove();
+
+    document.getElementById('sendBtn').disabled = true;
+    document.getElementById('btnStop').style.display = 'inline-block';
+    document.getElementById('taskInput').value = '';
+
+    self.addMsg('user', task);
+    self.currentTask = task;
+    self.showTyping(true);
+
+    var body = { task: task };
+    if (settings.apiKey) body.apiKey = settings.apiKey;
+    if (settings.baseURL) body.baseURL = settings.baseURL;
+    if (settings.model) body.model = settings.model;
+    if (settings.maxIterations) body.maxIterations = settings.maxIterations;
+    if (settings.headless === false) body.headless = false;
+    if (self.conversationHistory.length > 0) body.messages = self.conversationHistory;
+
+    fetch('/v1/agent/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (gen !== self._generation) return; // stale request after stop
+      if (!data.agentId) throw new Error(data.error?.message || 'Failed to start agent');
+      self.agentId = data.agentId;
+      updateHeaderButtons();
+      self.connectSSE(data.agentId);
+    }).catch(function(err) {
+      if (gen !== self._generation) return;
+      self.addMsg('error', err.message);
+      self.resetUI();
+    });
+  },
+
+  stop: function() {
+    this._generation++;
+    if (this.eventSource) { this.eventSource.close(); this.eventSource = null; }
+    this.addMsg('system', 'Agent stopped');
+    this.resetUI();
+  },
+
+  resetUI: function() {
+    document.getElementById('sendBtn').disabled = false;
+    document.getElementById('btnStop').style.display = 'none';
+    this.agentId = null;
+    this.showTyping(false);
+    updateHeaderButtons();
+  },
+
+  clearChat: function() {
+    if (this.eventSource) { this.eventSource.close(); this.eventSource = null; }
+    document.getElementById('chatMessages').innerHTML = '<div class="placeholder-text">Enter a task to start</div>';
+    this.currentMdContent = null;
+    this.mdHistory = [];
+    this.latestScreenshotHtml = '';
+    this.sessionId = null;
+    this.conversationHistory = [];
+    this.currentTask = '';
+    document.getElementById('previewUrl').textContent = '';
+    document.getElementById('agentViewElements').style.display = 'none';
+    this.renderPreview();
+    this.resetUI();
+  },
+
+  showTyping: function(show) {
+    document.getElementById('typingIndicator').classList.toggle('visible', show);
+  },
+};
+</script>
+
+<script>
+// ===== Agent SSE + Events =====
+Agent.connectSSE = function(id) {
+  var self = this;
+  self.eventSource = new EventSource('/v1/agent/' + id + '/events');
+  self.eventSource.onmessage = function(e) {
+    self.handleEvent(JSON.parse(e.data));
+  };
+  self.eventSource.onerror = function() {
+    self.eventSource.close();
+    self.eventSource = null;
+    if (self.agentId) {
+      self.addMsg('error', 'Connection lost');
+      self.resetUI();
+    }
+  };
+};
+
+Agent.handleEvent = function(ev) {
+  var self = this;
+  switch (ev.type) {
+    case 'session_created':
+      self.sessionId = ev.sessionId;
+      App.sharedSessionId = ev.sessionId;
+      self.addMsg('system', 'Session created');
+      document.getElementById('agentViewElements').style.display = 'inline-block';
+      self.refreshScreenshot();
+      break;
+    case 'thinking':
+      self.showTyping(true);
+      self.addMsg('thinking', ev.content, ev.iteration);
+      break;
+    case 'tool_call':
+      self.showTyping(true);
+      self.addMsg('tool_call', ev.name, ev.iteration, ev.args);
+      break;
+    case 'tool_result':
+      self.showTyping(false);
+      self.addMsg('tool_result', ev.summary, ev.iteration, ev.success, ev.name);
+      self.pushMdContent('Step ' + ev.iteration + ' - ' + ev.name, self.formatMdResult(ev.name, ev.summary));
+      self.refreshScreenshot();
+      break;
+    case 'error':
+      self.showTyping(false);
+      self.addMsg('error', ev.message, ev.iteration);
+      break;
+    case 'input_required':
+      self.showTyping(false);
+      self.addMsg('system', 'Agent is waiting for your input...');
+      self.showInputDialog(ev.requestId, ev.question, ev.fields);
+      break;
+    case 'done':
+      self.addMsg('done', ev.success ? (ev.result || 'Done') : (ev.error || 'Failed'), null, ev.success);
+      self.addMsg('system', 'Total steps: ' + ev.iterations);
+      if (self.currentTask) {
+        self.conversationHistory.push({ role: 'user', content: self.currentTask });
+        self.conversationHistory.push({ role: 'assistant', content: ev.result || ev.error || 'Done' });
+        if (self.conversationHistory.length > 20) {
+          self.conversationHistory = self.conversationHistory.slice(-20);
+        }
+        self.currentTask = '';
+      }
+      self.refreshScreenshot();
+      self.resetUI();
+      if (self.eventSource) { self.eventSource.close(); self.eventSource = null; }
+      break;
+  }
+};
+</script>
+
+<script>
+// ===== Agent message rendering =====
+Agent.addMsg = function(type, content, iteration, extra, extra2) {
+  var container = document.getElementById('chatMessages');
+  var ph = container.querySelector('.placeholder-text');
+  if (ph) ph.remove();
+
+  var el = document.createElement('div');
+  el.className = 'msg';
+
+  switch (type) {
+    case 'user':
+      el.className = 'msg msg-user';
+      el.innerHTML = '<div class="bubble">' + esc(content) + '</div>';
+      break;
+    case 'system':
+      el.className = 'msg msg-system';
+      el.textContent = '\u2014 ' + content + ' \u2014';
+      break;
+    case 'thinking':
+      el.className = 'msg msg-thinking';
+      el.innerHTML = this.stepTag(iteration) + '<div class="md-inline markdown-body">' + safeMd(content || '') + '</div>';
+      break;
+    case 'tool_call':
+      el.className = 'msg msg-tool-call';
+      el.innerHTML = this.stepTag(iteration) +
+        '<div class="tool-header"><span class="tool-icon">\u25B6</span> <span class="label">' + esc(content) + '</span></div>' +
+        '<pre>' + esc(JSON.stringify(extra, null, 2)) + '</pre>';
+      break;
+    case 'tool_result':
+      el.className = 'msg msg-tool-result ' + (extra ? 'success' : 'fail');
+      var lbl = extra ? 'Result' : 'Error';
+      var clr = extra ? '#3fb950' : '#f85149';
+      var mdContent = this.formatMdResult(extra2 || lbl, content);
+      var resultId = 'result_' + (++this._resultCounter);
+      el.innerHTML = this.stepTag(iteration) +
+        '<span style="color:' + clr + ';font-weight:600;">' + esc(extra2 || lbl) + '</span>' +
+        '<div class="result-content" id="' + resultId + '"><div class="markdown-body">' + safeMd(mdContent) + '</div></div>' +
+        '<button class="expand-btn" onclick="Agent.toggleExpand(\'' + resultId + '\', this)">Show more</button>';
+      // Check if needs expand after render
+      setTimeout(function() {
+        var rc = document.getElementById(resultId);
+        if (rc && rc.scrollHeight > 130) {
+          rc.classList.add('needs-expand');
+          rc.nextElementSibling.classList.add('visible');
+        }
+      }, 50);
+      break;
+    case 'error':
+      el.className = 'msg msg-error';
+      el.innerHTML = (iteration ? this.stepTag(iteration) : '') + 'Error: ' + esc(content);
+      break;
+    case 'done':
+      el.className = 'msg msg-done ' + (extra ? 'success' : 'fail');
+      var title = extra ? 'Task Completed' : 'Task Failed';
+      var tc = extra ? '#3fb950' : '#f85149';
+      el.innerHTML = '<div class="title" style="color:' + tc + '">' + title + '</div><div class="markdown-body">' + safeMd(content || '') + '</div>';
+      break;
+  }
+
+  container.appendChild(el);
+  container.scrollTop = container.scrollHeight;
+};
+
+Agent.toggleExpand = function(id, btn) {
+  var el = document.getElementById(id);
+  var expanded = el.classList.toggle('expanded');
+  btn.textContent = expanded ? 'Show less' : 'Show more';
+};
+
+Agent.stepTag = function(n) {
+  if (n == null) return '';
+  return '<span class="step-tag">Step ' + n + '</span>';
+};
+</script>
+
+<script>
+// ===== Agent formatMdResult + screenshot + input dialog =====
+Agent.formatMdResult = function(toolName, summary) {
+  try {
+    var obj = JSON.parse(summary);
+    if (toolName === 'get_page_info' && obj.elements) {
+      var md = '## Page: ' + (obj.page?.title || '') + '\n\n';
+      md += '**URL:** ' + (obj.page?.url || '') + '\n\n';
+      md += '**Elements:** ' + obj.elementCount + '\n\n';
+      md += '| ID | Type | Label |\n|---|---|---|\n';
+      (obj.elements || []).forEach(function(el) {
+        md += '| `' + el.id + '` | ' + el.type + ' | ' + (el.label || '-') + ' |\n';
+      });
+      return md;
+    }
+    if (toolName === 'get_page_content') {
+      var md = '## ' + (obj.title || 'Page Content') + '\n\n';
+      if (obj.sections && obj.sections.length > 0) {
+        obj.sections.forEach(function(s) {
+          var stars = s.attention >= 0.7 ? '\u2605\u2605\u2605' : s.attention >= 0.4 ? '\u2605\u2605' : '\u2605';
+          md += '**[' + stars + ']** ' + s.text + '\n\n';
+        });
+      } else {
+        md += '_No content sections extracted._\n';
+      }
+      return md;
+    }
+    if (toolName === 'navigate') {
+      return '## Navigate\n\n**URL:** ' + (obj.page?.url || '') + '\n\n**Title:** ' + (obj.page?.title || '');
+    }
+    if (toolName === 'find_element') {
+      var md = '## Find Element: ' + (obj.query || '') + '\n\n';
+      if (obj.candidates && obj.candidates.length > 0) {
+        md += '| ID | Label | Score |\n|---|---|---|\n';
+        obj.candidates.forEach(function(c) {
+          md += '| `' + c.id + '` | ' + (c.label || '-') + ' | ' + c.score + ' |\n';
+        });
+      } else {
+        md += 'No matches found.';
+      }
+      return md;
+    }
+    return '## ' + toolName + '\n\n```json\n' + JSON.stringify(obj, null, 2) + '\n```';
+  } catch (e) {
+    return '## ' + toolName + '\n\n```\n' + summary + '\n```';
+  }
+};
+
+Agent.refreshScreenshot = function() {
+  var self = this;
+  if (!self.sessionId) return;
+  fetch('/v1/sessions/' + self.sessionId + '/screenshot')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.image && data.image.indexOf('data:image/') === 0) {
+        self.latestScreenshotHtml = '<img src="' + data.image + '" alt="screenshot">';
+      }
+      return fetch('/v1/sessions/' + self.sessionId);
+    }).then(function(r) { return r.json(); })
+    .then(function(info) {
+      if (info.tabs && info.tabs.length > 0) {
+        var tab = info.tabs.find(function(t) { return t.id === info.activeTabId; }) || info.tabs[0];
+        document.getElementById('previewUrl').textContent = tab.url || '';
+      }
+      if (self.previewMode === 'screenshot') self.renderPreview();
+    }).catch(function() {});
+};
+</script>
+
+<script>
+// ===== Agent input dialog (ask_human) =====
+Agent.showInputDialog = function(requestId, question, fields) {
+  var existing = document.getElementById('inputModal');
+  if (existing) existing.remove();
+
+  var overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'inputModal';
+
+  var modal = document.createElement('div');
+  modal.className = 'modal';
+
+  var h2 = document.createElement('h2');
+  h2.textContent = question;
+  modal.appendChild(h2);
+
+  fields.forEach(function(field) {
+    var label = document.createElement('label');
+    label.textContent = field.label;
+    modal.appendChild(label);
+
+    var input = document.createElement('input');
+    input.type = field.type || 'text';
+    input.id = 'input_field_' + field.name;
+    input.setAttribute('data-field-name', field.name);
+    input.setAttribute('data-field-type', field.type);
+    input.placeholder = field.label;
+    modal.appendChild(input);
+  });
+
+  var btns = document.createElement('div');
+  btns.className = 'modal-btns';
+
+  var cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.onclick = function() { Agent.cancelInput(requestId); };
+  btns.appendChild(cancelBtn);
+
+  var submitBtn = document.createElement('button');
+  submitBtn.className = 'btn btn-save';
+  submitBtn.textContent = 'Submit';
+  submitBtn.onclick = function() { Agent.submitInput(requestId); };
+  btns.appendChild(submitBtn);
+
+  modal.appendChild(btns);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+};
+
+Agent.submitInput = function(requestId) {
+  var modal = document.getElementById('inputModal');
+  if (!modal) return;
+  var btns = modal.querySelectorAll('button');
+  btns.forEach(function(b) { b.disabled = true; });
+
+  var inputs = modal.querySelectorAll('input[data-field-name]');
+  var response = {};
+  var displayParts = [];
+  inputs.forEach(function(input) {
+    var name = input.getAttribute('data-field-name');
+    var type = input.getAttribute('data-field-type');
+    response[name] = input.value;
+    displayParts.push(name + ': ' + (type === 'password' ? '***' : input.value));
+  });
+
+  var self = this;
+  fetch('/v1/agent/' + self.agentId + '/input', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId: requestId, response: response }),
+  }).then(function() {
+    self.addMsg('system', 'Submitted: ' + displayParts.join(', '));
+    modal.remove();
+  }).catch(function(err) {
+    self.addMsg('error', 'Submit failed: ' + err.message);
+    btns.forEach(function(b) { b.disabled = false; });
+  });
+};
+
+Agent.cancelInput = function(requestId) {
+  var modal = document.getElementById('inputModal');
+  if (!modal) return;
+  var self = this;
+  fetch('/v1/agent/' + self.agentId + '/input', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId: requestId, response: { error: 'User cancelled input' } }),
+  }).catch(function() {});
+  self.addMsg('system', 'Input cancelled');
+  modal.remove();
+};
+</script>
+
+<script>
+// ===== Keyboard shortcuts =====
+document.getElementById('taskInput').addEventListener('keypress', function(e) {
+  if (e.key === 'Enter' && !document.getElementById('sendBtn').disabled) Agent.start();
+});
+
+document.getElementById('semUrlInput').addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') Sem.analyze();
+});
+
+// Event delegation for semantic element action buttons (avoids XSS via inline onclick)
+document.getElementById('semLeftContent').addEventListener('click', function(e) {
+  var btn = e.target.closest('[data-sem-action]');
+  if (!btn) return;
+  var action = btn.getAttribute('data-sem-action');
+  var id = btn.getAttribute('data-sem-id');
+  if (action === 'click') Sem.doAction('click', id);
+  else if (action === 'type') Sem.showTypeModal(id);
+});
+
+// Event delegation for filter bar buttons
+document.getElementById('semFilterBar').addEventListener('click', function(e) {
+  var btn = e.target.closest('[data-filter]');
+  if (!btn) return;
+  Sem.setFilter(btn.getAttribute('data-filter'));
+});
+
+// Enter key on type modal
+document.getElementById('typeValue').addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') Sem.confirmType();
+});
+</script>
+
+<script>
+// ========== Init ==========
+(function() {
+  var hash = location.hash.replace('#', '');
+  if (hash === 'agent') {
+    switchView('agent');
+  } else {
+    switchView('semantic');
+  }
+})();
+</script>
 </body>
 </html>

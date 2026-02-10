@@ -569,7 +569,7 @@ export function registerRoutes(
     const mcpHeadless = headless !== undefined ? { headless: headless as boolean } : {};
     const mcpServer = createBrowserMcpServer(sessionManager, cookieStore, {
       ...mcpHeadless,
-      urlValidation: { allowFile: true },
+      trustLevel: 'local',
     });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await mcpServer.connect(serverTransport);

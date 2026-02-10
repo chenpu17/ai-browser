@@ -1,4 +1,4 @@
-import { Page, Frame } from 'puppeteer';
+import { Page, Frame } from 'puppeteer-core';
 import { Rect } from '../types/index.js';
 
 export interface FrameInfo {

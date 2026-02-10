@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
-import { Page, Dialog, CDPSession } from 'puppeteer';
+import { Page, Dialog, CDPSession } from 'puppeteer-core';
 import {
   DialogInfo,
   NetworkLogEntry,

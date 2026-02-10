@@ -387,7 +387,8 @@ export class BrowsingAgent extends EventEmitter {
       let success = true;
       try {
         const mcpResult = await this.mcpClient.callTool({ name, arguments: mcpArgs });
-        rawText = (mcpResult.content as any)[0]?.text || '{}';
+        const textPart = (mcpResult.content as any[])?.find((c) => c?.type === 'text' && typeof c.text === 'string');
+        rawText = textPart?.text || '{}';
         if (mcpResult.isError) success = false;
       } catch (err: any) {
         rawText = JSON.stringify({ error: err.message });

@@ -49,11 +49,36 @@ Add to your `claude_desktop_config.json`:
 
 ### 4. Use with remote MCP clients (SSE)
 
+Start the HTTP server:
+
 ```bash
 ai-browser --port 3000
-# SSE endpoint: http://localhost:3000/mcp/sse
-# Message endpoint: http://localhost:3000/mcp/message?sessionId=xxx
 ```
+
+SSE endpoint:
+- `http://127.0.0.1:3000/mcp/sse`
+
+For custom clients, use MCP SDK `SSEClientTransport` (it handles the message endpoint internally):
+
+```ts
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+
+const client = new Client({ name: 'my-client', version: '0.1.0' });
+const transport = new SSEClientTransport(new URL('http://127.0.0.1:3000/mcp/sse'));
+
+await client.connect(transport);
+
+const { tools } = await client.listTools();
+console.log('tool count:', tools.length);
+
+const created = await client.callTool({ name: 'create_session', arguments: {} });
+console.log(created);
+```
+
+Notes:
+- This server currently exposes legacy HTTP+SSE MCP transport (`/mcp/sse` + `/mcp/message`).
+- The message endpoint is `POST /mcp/message?sessionId=...` and is primarily for transport internals.
 
 ### 5. Use as a library
 
@@ -109,14 +134,18 @@ import {
 
 ## MCP Tools
 
-The following 28 tools are available to LLM agents via MCP. All tools accept an optional `sessionId` — omitting it auto-creates/reuses a default session.
+The server currently exposes **35 MCP tools**:
+- **28 browser primitive tools** (navigation, interaction, tabs, logs, uploads, etc.)
+- **7 task-runtime tools** (template execution, run tracking, artifacts)
+
+Most browser tools accept an optional `sessionId` — omitting it auto-creates/reuses a default session.
 
 ### Session Management
 
 | Tool | Description |
 |------|-------------|
 | `create_session` | Create a new browser session |
-| `close_session` | Close a browser session |
+| `close_session` | Close a browser session (`force=true` closes headful sessions) |
 
 ### Navigation & Page Info
 
@@ -127,7 +156,7 @@ The following 28 tools are available to LLM agents via MCP. All tools accept an 
 | `get_page_content` | Extract page text with attention scores (supports `maxLength` truncation) |
 | `find_element` | Fuzzy search for elements by name or type |
 | `screenshot` | Take a page screenshot (supports `fullPage`, `element_id`, `format`, `quality`) |
-| `execute_javascript` | Execute JavaScript on the page (5s timeout, 4000-char result truncation) |
+| `execute_javascript` | Execute JavaScript on the page (**local mode only**; 5s timeout, 4000-char result truncation) |
 
 ### Element Interaction
 
@@ -141,7 +170,7 @@ The following 28 tools are available to LLM agents via MCP. All tools accept an 
 | `press_key` | Press keyboard keys (Enter, Escape, Tab, etc.), supports modifier combos (`modifiers: ['Control']`) |
 | `scroll` | Scroll the page up or down |
 | `go_back` | Navigate back |
-| `wait` | Wait for condition: `time`, `selector`, `networkidle`, or `element_hidden` |
+| `wait` | Wait by condition: `time`, `selector`, `networkidle`, or `element_hidden` |
 
 ### Tab Management
 
@@ -171,8 +200,20 @@ The following 28 tools are available to LLM agents via MCP. All tools accept an 
 
 | Tool | Description |
 |------|-------------|
-| `upload_file` | Upload a file to a file input element |
+| `upload_file` | Upload a file to a file input element (**local mode only**) |
 | `get_downloads` | Get downloaded files list |
+
+### Task Runtime (Non-LLM Templates)
+
+| Tool | Description |
+|------|-------------|
+| `list_task_templates` | List available deterministic task templates |
+| `run_task_template` | Run a template in `sync` / `async` / `auto` mode |
+| `get_task_run` | Query run status, progress, result, and artifact refs |
+| `list_task_runs` | List runs with pagination and filters (`status`, `templateId`) |
+| `cancel_task_run` | Cancel an active run |
+| `get_artifact` | Read run artifacts by chunks (`offset`, `limit`) |
+| `get_runtime_profile` | Get runtime limits and profile info |
 
 ### Structured Error Codes
 
@@ -186,6 +227,12 @@ Error responses include an `errorCode` field for programmatic handling:
 | `PAGE_CRASHED` | Page crashed or was closed |
 | `INVALID_PARAMETER` | Invalid parameter value |
 | `EXECUTION_ERROR` | JavaScript execution error |
+| `TEMPLATE_NOT_FOUND` | Task template does not exist |
+| `TRUST_LEVEL_NOT_ALLOWED` | Template not allowed in current trust level |
+| `RUN_NOT_FOUND` | Run ID does not exist |
+| `RUN_TIMEOUT` | Run exceeded timeout |
+| `RUN_CANCELED` | Run canceled by client |
+| `ARTIFACT_NOT_FOUND` | Artifact does not exist or expired |
 
 ## REST API
 
@@ -216,6 +263,28 @@ By default the browser runs in headless mode. To use headful mode (e.g. for manu
 - **API**: `POST /v1/sessions` with `{ "options": { "headless": false } }`
 
 Cookies are shared across sessions via the built-in cookie store, so you can log in with a headful session and then create a headless session that reuses the login state.
+
+## Security
+
+AI Browser uses a **trust level** system to control security policies across different entry points.
+
+### Trust Levels
+
+| Level | Entry Point | Description |
+|-------|-------------|-------------|
+| `local` | stdio MCP (`ai-browser-mcp`), Agent API | Full access — allows `file:` URLs, no private IP blocking |
+| `remote` | SSE MCP (`/mcp/sse`) | Restricted — blocks private/loopback IPs, DNS rebinding protection, disables `upload_file` and `execute_javascript` |
+
+### SSE Endpoint Restrictions (remote mode)
+
+- **Private IP blocking**: Navigation to `localhost`, `127.0.0.1`, `10.x.x.x`, `192.168.x.x`, and other RFC 1918 addresses is denied
+- **DNS rebinding protection**: Hostnames that resolve to private IPs are blocked via async DNS lookup
+- **Tool gating**: `upload_file` and `execute_javascript` are disabled to prevent local file access and arbitrary code execution
+- **Session cleanup**: When an SSE connection disconnects, headless browser sessions created by that connection are automatically closed (headful sessions are preserved)
+
+### Cookie Isolation
+
+AI Browser is designed as a **single-user local tool**. All sessions share a single cookie store. For multi-user deployments, run separate instances per user.
 
 ## Environment Variables
 

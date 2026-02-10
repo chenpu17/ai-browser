@@ -1,4 +1,6 @@
-import puppeteer, { Browser, Page } from 'puppeteer';
+import puppeteer, { Browser, Page } from 'puppeteer-core';
+import { existsSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 
 export interface BrowserOptions {
   headless?: boolean | 'new';
@@ -48,6 +50,14 @@ export class BrowserManager {
     options: BrowserOptions = {},
   ): Promise<Browser> {
     const executablePath = process.env.CHROME_PATH || this.detectChromePath();
+    if (!executablePath) {
+      throw new Error(
+        'Chrome/Chromium not found. Please set the CHROME_PATH environment variable to your Chrome executable path.\n' +
+        '  Example (macOS):   export CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"\n' +
+        '  Example (Windows): set CHROME_PATH=C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\n' +
+        '  Example (Linux):   export CHROME_PATH=/usr/bin/google-chrome',
+      );
+    }
     const proxyServer = process.env.PROXY_SERVER || '';
 
     const args = [
@@ -66,13 +76,47 @@ export class BrowserManager {
   }
 
   private detectChromePath(): string | undefined {
+    const candidates = this.getChromeCandidates();
+    const found = candidates.find(p => existsSync(p));
+    if (found) return found;
+    // Fallback: try system PATH via which/where
+    try {
+      const cmd = process.platform === 'win32' ? 'where chrome' : 'which google-chrome || which chromium-browser || which chromium';
+      return execSync(cmd, { encoding: 'utf-8', timeout: 3000 }).trim().split('\n')[0];
+    } catch {
+      return undefined;
+    }
+  }
+
+  private getChromeCandidates(): string[] {
     const platform = process.platform;
-    const paths: Record<string, string> = {
-      darwin: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-      win32: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-      linux: '/usr/bin/google-chrome',
-    };
-    return paths[platform];
+    if (platform === 'darwin') {
+      return [
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/Applications/Chromium.app/Contents/MacOS/Chromium',
+        `${process.env.HOME}/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`,
+      ];
+    }
+    if (platform === 'win32') {
+      const envDirs = [
+        process.env.LOCALAPPDATA,
+        process.env.PROGRAMFILES,
+        process.env['PROGRAMFILES(X86)'],
+      ].filter(Boolean) as string[];
+      const suffixes = [
+        '\\Google\\Chrome\\Application\\chrome.exe',
+        '\\Microsoft\\Edge\\Application\\msedge.exe',
+      ];
+      return envDirs.flatMap(dir => suffixes.map(s => dir + s));
+    }
+    // linux
+    return [
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/chromium-browser',
+      '/usr/bin/chromium',
+      '/snap/bin/chromium',
+    ];
   }
 
   async close(): Promise<void> {

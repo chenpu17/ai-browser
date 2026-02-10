@@ -19,7 +19,7 @@ async function main() {
 
   log('Creating MCP server...');
   const mcpServer = createBrowserMcpServer(sessionManager, cookieStore, {
-    urlValidation: { allowFile: true },
+    trustLevel: 'local',
   });
 
   const transport = new StdioServerTransport();

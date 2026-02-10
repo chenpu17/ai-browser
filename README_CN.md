@@ -49,11 +49,36 @@ ai-browser --port 8080
 
 ### 4. 远程 MCP 客户端接入（SSE）
 
+先启动 HTTP 服务：
+
 ```bash
 ai-browser --port 3000
-# SSE 端点: http://localhost:3000/mcp/sse
-# 消息端点: http://localhost:3000/mcp/message?sessionId=xxx
 ```
+
+SSE 端点：
+- `http://127.0.0.1:3000/mcp/sse`
+
+自定义客户端建议直接使用 MCP SDK 的 `SSEClientTransport`（会自动处理 message endpoint）：
+
+```ts
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+
+const client = new Client({ name: 'my-client', version: '0.1.0' });
+const transport = new SSEClientTransport(new URL('http://127.0.0.1:3000/mcp/sse'));
+
+await client.connect(transport);
+
+const { tools } = await client.listTools();
+console.log('tool count:', tools.length);
+
+const created = await client.callTool({ name: 'create_session', arguments: {} });
+console.log(created);
+```
+
+说明：
+- 当前服务暴露的是 legacy HTTP+SSE MCP 传输（`/mcp/sse` + `/mcp/message`）。
+- 消息端点是 `POST /mcp/message?sessionId=...`，通常由 transport 内部处理，不建议手工调用。
 
 ### 5. 作为库使用
 
@@ -109,14 +134,18 @@ import {
 
 ## MCP 工具
 
-LLM Agent 可通过 MCP 协议调用以下 28 个浏览器工具。所有工具的 `sessionId` 参数均为可选 — 不传时自动创建/复用默认会话。
+当前服务共暴露 **35 个 MCP 工具**：
+- **28 个浏览器原子工具**（导航、交互、标签页、日志、上传下载等）
+- **7 个任务运行时工具**（模板执行、运行状态、产物读取）
+
+大多数浏览器工具支持可选 `sessionId` — 不传时自动创建/复用默认会话。
 
 ### 会话管理
 
 | 工具 | 说明 |
 |------|------|
 | `create_session` | 创建新的浏览器会话 |
-| `close_session` | 关闭浏览器会话 |
+| `close_session` | 关闭浏览器会话（`force=true` 可关闭 headful 会话） |
 
 ### 导航与页面信息
 
@@ -127,7 +156,7 @@ LLM Agent 可通过 MCP 协议调用以下 28 个浏览器工具。所有工具�
 | `get_page_content` | 提取页面文本内容，带注意力评分（支持 `maxLength` 截断） |
 | `find_element` | 按名称或类型模糊搜索元素 |
 | `screenshot` | 页面截图（支持 `fullPage` 全页、`element_id` 元素截图、`format`/`quality` 格式质量） |
-| `execute_javascript` | 在页面执行 JavaScript（5 秒超时，结果超过 4000 字符自动截断） |
+| `execute_javascript` | 在页面执行 JavaScript（**仅 local 模式可用**；5 秒超时，结果超过 4000 字符自动截断） |
 
 ### 元素交互
 
@@ -141,7 +170,7 @@ LLM Agent 可通过 MCP 协议调用以下 28 个浏览器工具。所有工具�
 | `press_key` | 模拟键盘按键（Enter、Escape、Tab 等），支持组合键（`modifiers: ['Control']`） |
 | `scroll` | 页面上下滚动 |
 | `go_back` | 浏览器后退 |
-| `wait` | 等待条件：`time`、`selector`、`networkidle` 或 `element_hidden` |
+| `wait` | 按条件等待：`time`、`selector`、`networkidle` 或 `element_hidden` |
 
 ### 标签页管理
 
@@ -171,8 +200,20 @@ LLM Agent 可通过 MCP 协议调用以下 28 个浏览器工具。所有工具�
 
 | 工具 | 说明 |
 |------|------|
-| `upload_file` | 上传文件到 file input 元素 |
+| `upload_file` | 上传文件到 file input 元素（**仅 local 模式可用**） |
 | `get_downloads` | 获取已下载文件列表 |
+
+### 任务运行时（无 LLM 模板）
+
+| 工具 | 说明 |
+|------|------|
+| `list_task_templates` | 列出可用的确定性任务模板 |
+| `run_task_template` | 以 `sync` / `async` / `auto` 模式运行模板 |
+| `get_task_run` | 查询运行状态、进度、结果和产物引用 |
+| `list_task_runs` | 按条件分页查询运行记录（`status`、`templateId`） |
+| `cancel_task_run` | 取消运行中的任务 |
+| `get_artifact` | 按分片读取任务产物（`offset`、`limit`） |
+| `get_runtime_profile` | 获取运行时限制和配置概要 |
 
 ### 结构化错误码
 
@@ -186,6 +227,12 @@ LLM Agent 可通过 MCP 协议调用以下 28 个浏览器工具。所有工具�
 | `PAGE_CRASHED` | 页面崩溃或已关闭 |
 | `INVALID_PARAMETER` | 参数值无效 |
 | `EXECUTION_ERROR` | JavaScript 执行错误 |
+| `TEMPLATE_NOT_FOUND` | 任务模板不存在 |
+| `TRUST_LEVEL_NOT_ALLOWED` | 当前 trust level 不允许运行该模板 |
+| `RUN_NOT_FOUND` | 任务运行 ID 不存在 |
+| `RUN_TIMEOUT` | 任务运行超时 |
+| `RUN_CANCELED` | 任务被客户端取消 |
+| `ARTIFACT_NOT_FOUND` | 产物不存在或已过期 |
 
 ## REST API
 
@@ -216,6 +263,28 @@ LLM Agent 可通过 MCP 协议调用以下 28 个浏览器工具。所有工具�
 - **API**: `POST /v1/sessions`，请求体 `{ "options": { "headless": false } }`
 
 Cookie 通过内置存储在会话间共享，因此可以先用 headful 会话手动登录，再创建 headless 会话复用登录状态。
+
+## 安全
+
+AI Browser 使用**信任级别**系统来控制不同入口的安全策略。
+
+### 信任级别
+
+| 级别 | 入口 | 说明 |
+|------|------|------|
+| `local` | stdio MCP (`ai-browser-mcp`)、Agent API | 完全访问 — 允许 `file:` 协议，不阻止私网 IP |
+| `remote` | SSE MCP (`/mcp/sse`) | 受限模式 — 阻止私网/回环 IP、DNS 重绑定防护、禁用 `upload_file` 和 `execute_javascript` |
+
+### SSE 端点限制（remote 模式）
+
+- **私网 IP 拦截**：禁止导航到 `localhost`、`127.0.0.1`、`10.x.x.x`、`192.168.x.x` 等 RFC 1918 地址
+- **DNS 重绑定防护**：通过异步 DNS 解析检查，阻止解析到私网 IP 的域名
+- **工具门控**：禁用 `upload_file` 和 `execute_javascript`，防止本地文件访问和任意代码执行
+- **会话清理**：SSE 连接断开时，自动关闭该连接创建的 headless 会话（headful 会话保留）
+
+### Cookie 隔离
+
+AI Browser 设计为**单用户本地工具**，所有会话共享同一个 Cookie 存储。多用户部署需为每个用户运行独立实例。
 
 ## 环境变量
 

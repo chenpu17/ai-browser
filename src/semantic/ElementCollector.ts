@@ -1,4 +1,4 @@
-import { Page, CDPSession } from 'puppeteer';
+import { Page, CDPSession } from 'puppeteer-core';
 import { SemanticElement, ElementState, ActionType, Rect } from '../types/index.js';
 
 interface CollectedNode {

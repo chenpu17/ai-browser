@@ -17,29 +17,48 @@ export function registerMcpSseRoutes(
   app.get('/mcp/sse', (request, reply) => {
     reply.hijack();
 
+    // Track browser sessions created by this SSE connection
+    const createdSessionIds = new Set<string>();
+
     const transport = new SSEServerTransport('/mcp/message', reply.raw);
     const mcpServer = createBrowserMcpServer(sessionManager, cookieStore, {
-      urlValidation: { blockPrivate: true },
+      trustLevel: 'remote',
+      onSessionCreated: (browserSessionId) => {
+        createdSessionIds.add(browserSessionId);
+      },
     });
 
     const sessionId = transport.sessionId;
     transports.set(sessionId, transport);
 
-    transport.onclose = () => {
-      transports.delete(sessionId);
-      mcpServer.close().catch(() => {});
-    };
+    let cleanedUp = false;
+    const cleanupConnection = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
 
-    mcpServer.connect(transport).catch((err) => {
-      app.log.error('MCP SSE connect error:', err);
-      transports.delete(sessionId);
-    });
-
-    request.raw.on('close', () => {
       transports.delete(sessionId);
       transport.close().catch(() => {});
       mcpServer.close().catch(() => {});
+
+      // Clean up browser sessions created by this SSE connection
+      for (const browserSessionId of createdSessionIds) {
+        const session = sessionManager.get(browserSessionId);
+        if (!session) continue;
+        // Skip headful sessions — preserve for manual use
+        if (!session.headless) continue;
+        sessionManager.close(browserSessionId).catch(() => {});
+      }
+      createdSessionIds.clear();
+    };
+
+    transport.onclose = cleanupConnection;
+
+    mcpServer.connect(transport).catch((err) => {
+      app.log.error('MCP SSE connect error:', err);
+      cleanupConnection();
     });
+
+    request.raw.on('close', cleanupConnection);
   });
 
   // POST /mcp/message?sessionId=xxx — 接收 MCP 客户端消息

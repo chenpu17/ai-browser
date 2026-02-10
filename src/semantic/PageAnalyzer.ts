@@ -1,4 +1,4 @@
-import { Page } from 'puppeteer';
+import { Page } from 'puppeteer-core';
 import { PageType, Intent } from '../types/index.js';
 
 interface PageSignals {

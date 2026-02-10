@@ -8,7 +8,7 @@ This is an AI-friendly browser automation service that provides semantic web pag
 
 - **CLI Layer** (`src/cli/`): Entry points — HTTP server (`ai-browser`) and stdio MCP (`ai-browser-mcp`)
 - **API Layer** (`src/api/`): Fastify HTTP server with REST API and SSE MCP endpoint
-- **MCP Layer** (`src/mcp/`): Browser tools exposed via MCP protocol (28 tools — navigate, click, type, screenshot, hover, select, set_value, execute_javascript, tab management, dialog handling, page stability, network/console logs, file upload/download, etc.)
+- **MCP Layer** (`src/mcp/`): Browser tools exposed via MCP protocol (35 tools: 28 browser primitives + 7 task-runtime tools — navigate, click, type, screenshot, template run/query, artifact retrieval, etc.)
 - **Agent Layer** (`src/agent/`): LLM-driven autonomous browsing agent with tool calling
 - **Semantic Layer** (`src/semantic/`): Accessibility tree analysis, content extraction, element matching
 - **Browser Layer** (`src/browser/`): Puppeteer-based browser management with multi-tab sessions, cookie store
@@ -28,6 +28,12 @@ This is an AI-friendly browser automation service that provides semantic web pag
 - Elements are identified by semantic IDs (e.g., `btn_Submit_123`, `link_News_456`)
 - IDs are injected into DOM via `data-semantic-id` attribute
 - Elements can be interacted with using these IDs
+
+### Trust Levels
+- `TrustLevel` (`'local'` | `'remote'`) controls security policies per entry point
+- `local`: stdio MCP + Agent API — allows `file:` URLs, no private IP blocking
+- `remote`: SSE MCP — blocks private IPs, DNS rebinding check, disables `upload_file` and `execute_javascript`
+- SSE connections track created sessions and clean up headless sessions on disconnect
 
 ## Development
 
@@ -88,3 +94,7 @@ npm test         # Run tests
 - Use async/await for all async operations
 - Handle errors gracefully with try/catch
 - Validate URLs before navigation (protocol whitelist, optional private IP blocking)
+- Use `trustLevel` instead of raw `urlValidation` options when creating MCP servers
+- Gate dangerous tools (`upload_file`, `execute_javascript`) behind `isRemote` check
+- Use `validateUrlAsync` for navigation in remote mode (DNS rebinding protection)
+- Cookie store is shared across all sessions — do not filter by domain (preserves cross-domain SSO)

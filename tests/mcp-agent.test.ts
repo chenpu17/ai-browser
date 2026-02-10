@@ -100,6 +100,8 @@ describe('BrowsingAgent', () => {
     const agent = new BrowsingAgent({
       mcpClient,
       maxIterations: 1,
+      apiKey: "test-key",
+      baseURL: "http://127.0.0.1:1/v1",
     });
 
     const events: any[] = [];
@@ -128,6 +130,8 @@ describe('BrowsingAgent', () => {
     const agent = new BrowsingAgent({
       mcpClient,
       maxIterations: 1,
+      apiKey: "test-key",
+      baseURL: "http://127.0.0.1:1/v1",
     });
 
     const result = await agent.run('test task');
@@ -146,6 +150,8 @@ describe('BrowsingAgent', () => {
     const agent = new BrowsingAgent({
       mcpClient,
       maxIterations: 1,
+      apiKey: "test-key",
+      baseURL: "http://127.0.0.1:1/v1",
     });
 
     // Access private discoverTools via run (it calls discoverTools internally)
@@ -160,7 +166,7 @@ describe('BrowsingAgent', () => {
 
     // Verify tools were discovered by checking MCP listTools directly
     const { tools } = await mcpClient.listTools();
-    expect(tools.length).toBe(28); // 28 MCP tools
+    expect(tools.length).toBe(35); // 35 MCP tools (28 browser + 7 task runtime)
     // done tool is added by agent internally, not from MCP
 
     try { await mcpClient.close(); } catch {}

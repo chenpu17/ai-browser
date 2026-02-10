@@ -2,6 +2,11 @@
  * URL validation utility — blocks dangerous protocols and private/loopback addresses.
  */
 
+import dns from 'node:dns';
+import { promisify } from 'node:util';
+
+const dnsLookup = promisify(dns.lookup);
+
 export interface ValidateUrlOptions {
   /** Allow file: protocol (default: false). Only enable for local/trusted contexts. */
   allowFile?: boolean;
@@ -94,4 +99,67 @@ export function validateUrl(url: string, options: ValidateUrlOptions = {}): { va
   }
 
   return { valid: true, parsed };
+}
+
+/** Check if hostname is an IP literal (v4 or v6 bracket notation) */
+function isIpLiteral(hostname: string): boolean {
+  if (hostname.startsWith('[')) return true; // IPv6
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
+}
+
+function isPrivateIp(ip: string): boolean {
+  for (const pattern of PRIVATE_IP_PATTERNS) {
+    if (pattern.test(ip)) return true;
+  }
+  return false;
+}
+
+/**
+ * Async URL validation with DNS resolution check.
+ * When blockPrivate=true and hostname is not an IP literal,
+ * resolves DNS and checks if the resolved IP is private (anti-DNS-rebinding).
+ * DNS failure → allow original URL (fail-open, avoids false negatives in restricted DNS envs).
+ */
+export async function validateUrlAsync(
+  url: string,
+  options: ValidateUrlOptions = {},
+): Promise<{ valid: true; parsed: URL } | { valid: false; reason: string }> {
+  // Run synchronous checks first
+  const syncResult = validateUrl(url, options);
+  if (!syncResult.valid) return syncResult;
+
+  // DNS check only needed when blockPrivate is enabled and hostname is not an IP literal
+  if (!options.blockPrivate) return syncResult;
+  const { parsed } = syncResult;
+  if (parsed.protocol === 'file:') return syncResult;
+
+  const hostname = parsed.hostname;
+  if (isIpLiteral(hostname)) return syncResult; // already checked by sync validator
+
+  // Resolve DNS and check resolved IP
+  try {
+    const { address } = await dnsLookup(hostname);
+    if (isPrivateIp(address)) {
+      return { valid: false, reason: `DNS resolved to private address: ${hostname} → ${address}` };
+    }
+    if (PRIVATE_HOSTNAMES.has(address)) {
+      return { valid: false, reason: `DNS resolved to private address: ${hostname} → ${address}` };
+    }
+  } catch {
+    // Retry once before giving up — handles transient DNS failures.
+    try {
+      const { address } = await dnsLookup(hostname);
+      if (isPrivateIp(address)) {
+        return { valid: false, reason: `DNS resolved to private address: ${hostname} → ${address}` };
+      }
+      if (PRIVATE_HOSTNAMES.has(address)) {
+        return { valid: false, reason: `DNS resolved to private address: ${hostname} → ${address}` };
+      }
+    } catch {
+      // Fail-open when DNS is unavailable so public URLs are not blocked by local resolver issues.
+      return syncResult;
+    }
+  }
+
+  return syncResult;
 }

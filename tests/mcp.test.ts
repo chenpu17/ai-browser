@@ -6,6 +6,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { BrowserManager } from '../src/browser/BrowserManager.js';
 import { SessionManager } from '../src/browser/SessionManager.js';
 import { createBrowserMcpServer, ErrorCode } from '../src/mcp/browser-mcp-server.js';
+import { validateUrl, validateUrlAsync } from '../src/utils/url-validator.js';
 import { escapeCSS, generateElementId, executeAction } from '../src/browser/actions.js';
 
 // Helper: fixture file URL
@@ -96,12 +97,13 @@ describe('MCP Browser Server', () => {
     const { tools } = await mcpClient.listTools();
     const names = tools.map(t => t.name).sort();
     expect(names).toEqual([
-      'click', 'close_session', 'close_tab', 'create_session', 'create_tab',
-      'execute_javascript', 'find_element', 'get_console_logs', 'get_dialog_info',
+      'cancel_task_run', 'click', 'close_session', 'close_tab', 'create_session', 'create_tab',
+      'execute_javascript', 'find_element', 'get_artifact', 'get_console_logs', 'get_dialog_info',
       'get_downloads', 'get_network_logs', 'get_page_content', 'get_page_info',
-      'go_back', 'handle_dialog', 'hover', 'list_tabs', 'navigate', 'press_key',
-      'screenshot', 'scroll', 'select_option', 'set_value', 'switch_tab',
-      'type_text', 'upload_file', 'wait', 'wait_for_stable',
+      'get_runtime_profile', 'get_task_run', 'go_back', 'handle_dialog', 'hover', 'list_tabs',
+      'list_task_runs', 'list_task_templates', 'navigate', 'press_key',
+      'run_task_template', 'screenshot', 'scroll', 'select_option', 'set_value',
+      'switch_tab', 'type_text', 'upload_file', 'wait', 'wait_for_stable',
     ]);
   });
 
@@ -1447,5 +1449,174 @@ describe('MCP Browser Server', () => {
     expect(result.downloads.length).toBe(0);
 
     await mcpClient.callTool({ name: 'close_session', arguments: { sessionId } });
+  });
+});
+
+// ============================================================
+// Part 3: Security tests — TrustLevel, tool gating, DNS check
+// ============================================================
+
+describe('validateUrlAsync', () => {
+  it('blocks localhost via DNS when blockPrivate=true', async () => {
+    const result = await validateUrlAsync('http://localhost:8080', { blockPrivate: true });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.reason).toContain('private');
+    }
+  });
+
+  it('allows public URL when blockPrivate=true', async () => {
+    const result = await validateUrlAsync('https://example.com', { blockPrivate: true });
+    expect(result.valid).toBe(true);
+  });
+
+  it('passes through when blockPrivate=false', async () => {
+    const result = await validateUrlAsync('http://localhost:8080', { blockPrivate: false });
+    expect(result.valid).toBe(true);
+  });
+
+  it('blocks IP literal 127.0.0.1 via sync check', async () => {
+    const result = await validateUrlAsync('http://127.0.0.1:8080', { blockPrivate: true });
+    expect(result.valid).toBe(false);
+  });
+});
+
+describe('MCP Remote Mode (trustLevel=remote)', () => {
+  let browserManager: BrowserManager;
+  let sessionManager: SessionManager;
+  let mcpServer: McpServer;
+  let mcpClient: Client;
+
+  beforeAll(async () => {
+    browserManager = new BrowserManager();
+    await browserManager.launch({ headless: true });
+    sessionManager = new SessionManager(browserManager);
+  });
+
+  afterAll(async () => {
+    await sessionManager.closeAll();
+    await browserManager.close();
+  });
+
+  beforeEach(async () => {
+    mcpServer = createBrowserMcpServer(sessionManager, undefined, {
+      trustLevel: 'remote',
+    });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    await mcpServer.connect(st);
+    mcpClient = new Client({ name: 'test-remote', version: '0.1.0' });
+    await mcpClient.connect(ct);
+  });
+
+  afterEach(async () => {
+    try { await mcpClient.close(); } catch {}
+    try { await mcpServer.close(); } catch {}
+  });
+
+  // Remote mode: upload_file returns error
+  it('upload_file is disabled in remote mode', async () => {
+    const createRes = await mcpClient.callTool({ name: 'create_session', arguments: {} });
+    const { sessionId } = parseResult(createRes);
+
+    const res = await mcpClient.callTool({
+      name: 'upload_file',
+      arguments: { sessionId, element_id: 'test', filePath: '/tmp/test.txt' },
+    });
+    expect(res.isError).toBe(true);
+    const err = parseResult(res);
+    expect(err.error).toContain('disabled in remote mode');
+
+    await mcpClient.callTool({ name: 'close_session', arguments: { sessionId } });
+  });
+
+  // Remote mode: execute_javascript returns error
+  it('execute_javascript is disabled in remote mode', async () => {
+    const createRes = await mcpClient.callTool({ name: 'create_session', arguments: {} });
+    const { sessionId } = parseResult(createRes);
+
+    const res = await mcpClient.callTool({
+      name: 'execute_javascript',
+      arguments: { sessionId, script: '1+1' },
+    });
+    expect(res.isError).toBe(true);
+    const err = parseResult(res);
+    expect(err.error).toContain('disabled in remote mode');
+
+    await mcpClient.callTool({ name: 'close_session', arguments: { sessionId } });
+  });
+
+  // Remote mode: navigate to localhost is blocked
+  it('navigate to localhost is blocked in remote mode', async () => {
+    const createRes = await mcpClient.callTool({ name: 'create_session', arguments: {} });
+    const { sessionId } = parseResult(createRes);
+
+    const res = await mcpClient.callTool({
+      name: 'navigate',
+      arguments: { sessionId, url: 'http://localhost:8080' },
+    });
+    expect(res.isError).toBe(true);
+    const err = parseResult(res);
+    expect(err.error).toContain('private');
+
+    await mcpClient.callTool({ name: 'close_session', arguments: { sessionId } });
+  });
+
+  // Remote mode: navigate to 127.0.0.1 is blocked
+  it('navigate to 127.0.0.1 is blocked in remote mode', async () => {
+    const createRes = await mcpClient.callTool({ name: 'create_session', arguments: {} });
+    const { sessionId } = parseResult(createRes);
+
+    const res = await mcpClient.callTool({
+      name: 'navigate',
+      arguments: { sessionId, url: 'http://127.0.0.1:3000' },
+    });
+    expect(res.isError).toBe(true);
+    const err = parseResult(res);
+    expect(err.error).toContain('private');
+
+    await mcpClient.callTool({ name: 'close_session', arguments: { sessionId } });
+  });
+});
+
+// ============================================================
+// Part 4: close_session no-op + defaultSessionPromise retry
+// ============================================================
+
+describe('MCP Session Edge Cases', () => {
+  let browserManager: BrowserManager;
+  let sessionManager: SessionManager;
+
+  beforeAll(async () => {
+    browserManager = new BrowserManager();
+    await browserManager.launch({ headless: true });
+    sessionManager = new SessionManager(browserManager);
+  });
+
+  afterAll(async () => {
+    await sessionManager.closeAll();
+    await browserManager.close();
+  });
+
+  // close_session without sessionId and no default session returns no-op
+  it('close_session returns no-op when no active session', async () => {
+    const mcpServer = createBrowserMcpServer(sessionManager, undefined, {
+      trustLevel: 'local',
+    });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    await mcpServer.connect(st);
+    const mcpClient = new Client({ name: 'test-noop', version: '0.1.0' });
+    await mcpClient.connect(ct);
+
+    // Call close_session without ever creating a session
+    const res = await mcpClient.callTool({
+      name: 'close_session',
+      arguments: {},
+    });
+    const result = parseResult(res);
+    expect(result.success).toBe(true);
+    expect(result.reason).toContain('No active session');
+
+    try { await mcpClient.close(); } catch {}
+    try { await mcpServer.close(); } catch {}
   });
 });

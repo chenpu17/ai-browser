@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Page } from 'puppeteer';
+import { Page } from 'puppeteer-core';
 import { BrowserManager, BrowserOptions } from './BrowserManager.js';
 import { CookieStore } from './CookieStore.js';
 import { PageEventTracker, PageEventTrackerOptions } from './PageEventTracker.js';

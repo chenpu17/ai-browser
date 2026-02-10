@@ -1,4 +1,4 @@
-import { Page, CDPSession } from 'puppeteer';
+import { Page, CDPSession } from 'puppeteer-core';
 import { LoadState, PageState } from '../types/index.js';
 
 interface InternalPageState {

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { SessionManager } from '../browser/index.js';
 import { CookieStore } from '../browser/CookieStore.js';
 import { executeAction, escapeCSS, setValueByAccessibility } from '../browser/actions.js';
-import { validateUrl, type ValidateUrlOptions } from '../utils/url-validator.js';
+import { validateUrl, validateUrlAsync, type ValidateUrlOptions } from '../utils/url-validator.js';
 import {
   ElementCollector,
   PageAnalyzer,
@@ -13,21 +13,26 @@ import {
   ContentExtractor,
   ElementMatcher,
 } from '../semantic/index.js';
+import * as toolActions from '../task/tool-actions.js';
+import type { ToolContext } from '../task/tool-context.js';
+import { RunManager } from '../task/run-manager.js';
+import { ArtifactStore } from '../task/artifact-store.js';
+import { registerTaskTools } from './task-tools.js';
 
-// Structured error codes for Agent consumption
-export enum ErrorCode {
-  ELEMENT_NOT_FOUND = 'ELEMENT_NOT_FOUND',
-  NAVIGATION_TIMEOUT = 'NAVIGATION_TIMEOUT',
-  SESSION_NOT_FOUND = 'SESSION_NOT_FOUND',
-  PAGE_CRASHED = 'PAGE_CRASHED',
-  INVALID_PARAMETER = 'INVALID_PARAMETER',
-  EXECUTION_ERROR = 'EXECUTION_ERROR',
-}
+// Re-export TrustLevel and ErrorCode from canonical locations
+export type { TrustLevel } from '../task/tool-context.js';
+export { ErrorCode } from '../task/error-codes.js';
+
+// Local import for use within this file
+import type { TrustLevel } from '../task/tool-context.js';
+import { ErrorCode } from '../task/error-codes.js';
 
 export interface BrowserMcpServerOptions {
   headless?: boolean | 'new';
-  /** URL 校验选项，控制 file: 协议和私网地址访问 */
+  trustLevel?: TrustLevel;
+  /** @deprecated Use trustLevel instead */
   urlValidation?: ValidateUrlOptions;
+  onSessionCreated?: (sessionId: string) => void;
 }
 
 export function createBrowserMcpServer(sessionManager: SessionManager, cookieStore?: CookieStore, options?: BrowserMcpServerOptions): McpServer {
@@ -36,6 +41,14 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     { capabilities: { tools: {} } }
   );
 
+  // Derive URL validation options from trustLevel (with backward compat for urlValidation)
+  const isRemote = options?.trustLevel === 'remote';
+  const urlOpts: ValidateUrlOptions = isRemote
+    ? { blockPrivate: true, allowFile: false }
+    : options?.trustLevel === 'local'
+      ? { allowFile: true, blockPrivate: false }
+      : options?.urlValidation ?? {};
+
   const elementCollector = new ElementCollector();
   const pageAnalyzer = new PageAnalyzer();
   const regionDetector = new RegionDetector();
@@ -43,7 +56,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
   const elementMatcher = new ElementMatcher();
 
   /** Save all cookies from a page via CDP (includes cross-domain SSO cookies) */
-  async function saveCookiesFromPage(page: import('puppeteer').Page): Promise<void> {
+  async function saveCookiesFromPage(page: import('puppeteer-core').Page): Promise<void> {
     if (!cookieStore) return;
     try {
       const client = await page.createCDPSession();
@@ -57,7 +70,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
   }
 
   /** Inject ALL saved cookies into a page via CDP (supports cross-domain SSO) */
-  async function injectCookiesToPage(page: import('puppeteer').Page): Promise<void> {
+  async function injectCookiesToPage(page: import('puppeteer-core').Page): Promise<void> {
     if (!cookieStore) return;
     const allCookies = cookieStore.getAll();
     if (allCookies.length === 0) return;
@@ -85,14 +98,28 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     // Use promise lock to prevent concurrent creation of multiple default sessions
     if (!defaultSessionPromise) {
       defaultSessionPromise = (async () => {
-        const sessionOpts = options?.headless !== undefined ? { headless: options.headless } : {};
-        const session = await sessionManager.create(sessionOpts);
-        defaultSessionId = session.id;
-        defaultSessionPromise = null;
-        return session.id;
+        try {
+          const sessionOpts = options?.headless !== undefined ? { headless: options.headless } : {};
+          const session = await sessionManager.create(sessionOpts);
+          defaultSessionId = session.id;
+          defaultSessionPromise = null;
+          options?.onSessionCreated?.(session.id);
+          return session.id;
+        } catch (err) {
+          defaultSessionPromise = null;  // Reset lock to allow retry
+          throw err;
+        }
       })();
     }
     return defaultSessionPromise;
+  }
+
+  // Create an isolated session for task runs (not bound to defaultSessionId)
+  async function createIsolatedSession(): Promise<string> {
+    const sessionOpts = options?.headless !== undefined ? { headless: options.headless } : {};
+    const session = await sessionManager.create(sessionOpts);
+    options?.onSessionCreated?.(session.id);
+    return session.id;
   }
 
   // Helper: get active tab for a session
@@ -132,6 +159,12 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     return undefined;
   }
 
+  function invalidParameterError(message: string): Error {
+    const err = new Error(message);
+    (err as any).errorCode = ErrorCode.INVALID_PARAMETER;
+    return err;
+  }
+
   // Helper: wrap async handler with try/catch to prevent unhandled exceptions
   function safe<T extends (...args: any[]) => Promise<any>>(fn: T): T {
     return (async (...args: any[]) => {
@@ -143,6 +176,23 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       }
     }) as T;
   }
+
+  // ToolContext for extracted toolActions (shared by MCP handlers and template executor)
+  const toolCtx: ToolContext = {
+    sessionManager,
+    cookieStore,
+    urlOpts,
+    trustLevel: options?.trustLevel ?? 'local',
+    resolveSession,
+    getActiveTab,
+    getTab: (sid: string, tid: string) => sessionManager.getTab(sid, tid),
+    injectCookies: injectCookiesToPage,
+    saveCookies: saveCookiesFromPage,
+  };
+
+  // RunManager + ArtifactStore for task template execution
+  const runManager = new RunManager();
+  const artifactStore = new ArtifactStore();
 
   // ===== create_session / close_session =====
 
@@ -157,23 +207,30 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       if (!defaultSessionId || !sessionManager.get(defaultSessionId)) {
         defaultSessionId = session.id;
       }
+      options?.onSessionCreated?.(session.id);
       return textResult({ sessionId: session.id });
     })
   );
 
   server.tool(
     'close_session',
-    '关闭浏览器会话',
-    { sessionId: z.string().optional().describe('会话ID，不传则使用默认会话') },
-    safe(async ({ sessionId: rawSessionId }) => {
+    '关闭浏览器会话（headful 会话会保留，不会被自动关闭）',
+    {
+      sessionId: z.string().optional().describe('会话ID，不传则使用默认会话'),
+      force: z.boolean().optional().describe('是否强制关闭 headful 会话，默认 false'),
+    },
+    safe(async ({ sessionId: rawSessionId, force }) => {
+      // No-op if no sessionId provided and no default session exists
+      if (!rawSessionId && !defaultSessionId && !defaultSessionPromise) {
+        return textResult({ success: true, reason: 'No active session to close' });
+      }
       const sessionId = await resolveSession(rawSessionId);
-      // 关闭前保存当前会话 + 所有 headful 会话的 cookie
       await sessionManager.saveAllCookies(sessionId);
 
-      // headful 会话不自动关闭，保留给用户手动操作
+      // 默认保留 headful 会话，force=true 时允许主动关闭。
       const session = sessionManager.get(sessionId);
-      if (session && !session.headless) {
-        return textResult({ success: true, kept: true, reason: 'headful session preserved' });
+      if (session && !session.headless && !force) {
+        return textResult({ success: true, kept: true, reason: 'headful session preserved (set force=true to close)' });
       }
 
       const closed = await sessionManager.close(sessionId);
@@ -194,54 +251,8 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       url: z.string().describe('要导航到的完整URL'),
     },
     safe(async ({ sessionId: rawSessionId, url }) => {
-      // URL validation
-      const check = validateUrl(url, options?.urlValidation ?? {});
-      if (!check.valid) {
-        const err = new Error(check.reason);
-        (err as any).errorCode = ErrorCode.INVALID_PARAMETER;
-        throw err;
-      }
-
       const sessionId = await resolveSession(rawSessionId);
-      const tab = getActiveTab(sessionId);
-      // 导航前先从 headful 会话同步最新 cookie（用户可能手动登录了）
-      await sessionManager.syncHeadfulCookies();
-      // 注入已保存的 cookies（通过 CDP 注入全部 cookie，支持跨域 SSO）
-      await injectCookiesToPage(tab.page);
-      let partial = false;
-      let statusCode: number | undefined;
-      try {
-        const response = await tab.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        statusCode = response?.status();
-      } catch (err: any) {
-        if (err.name === 'TimeoutError' || err.message?.includes('timeout')) {
-          partial = true;
-        } else {
-          throw new Error(err.message || 'Navigation failed');
-        }
-      }
-      // 给 SPA 页面额外渲染时间
-      try {
-        await tab.page.waitForNetworkIdle({ timeout: 3000 });
-      } catch {
-        // 忽略超时，不阻塞
-      }
-      tab.url = tab.page.url();
-      await saveCookiesFromPage(tab.page);
-      sessionManager.updateActivity(sessionId);
-      let title = '';
-      try { title = await tab.page.title(); } catch { title = '(无法获取标题)'; }
-      const result: any = {
-        success: true,
-        partial,
-        statusCode,
-        page: { url: tab.page.url(), title },
-      };
-      // Check for pending dialog after navigation
-      if (tab.events) {
-        const pending = tab.events.getPendingDialog();
-        if (pending) result.dialog = pending;
-      }
+      const result = await toolActions.navigate(toolCtx, sessionId, url);
       return textResult(result);
     })
   );
@@ -258,70 +269,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     safe(async ({ sessionId: rawSessionId, maxElements, visibleOnly }) => {
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
-      const limit = maxElements ?? 50;
-      const filterVisible = visibleOnly ?? true;
-
-      const [elements, analysis, regions] = await Promise.all([
-        elementCollector.collect(tab.page),
-        pageAnalyzer.analyze(tab.page),
-        regionDetector.detect(tab.page),
-      ]);
-
-      let filtered = elements;
-
-      // Filter to viewport-visible elements
-      if (filterVisible) {
-        const viewport = tab.page.viewport();
-        if (viewport) {
-          filtered = filtered.filter((el: any) => {
-            const b = el.bounds;
-            if (!b || (b.width === 0 && b.height === 0)) return true; // keep elements without bounds
-            return b.y + b.height > 0 && b.y < viewport.height && b.x + b.width > 0 && b.x < viewport.width;
-          });
-        }
-      }
-
-      // Sort by y position and truncate
-      const totalElements = filtered.length;
-      filtered.sort((a: any, b: any) => (a.bounds?.y ?? 0) - (b.bounds?.y ?? 0));
-      const truncated = filtered.length > limit;
-      if (truncated) {
-        filtered = filtered.slice(0, limit);
-      }
-
-      // Mask sensitive field values
-      for (const el of filtered as any[]) {
-        if (el.type === 'textbox' || el.type === 'input') {
-          const idLower = (el.id || '').toLowerCase();
-          const labelLower = (el.label || '').toLowerCase();
-          const isPassword = idLower.includes('password') || idLower.includes('secret') || idLower.includes('token')
-            || labelLower.includes('password') || labelLower.includes('secret') || labelLower.includes('token');
-          if (isPassword && el.state?.value) {
-            el.state.value = '********';
-          }
-        }
-      }
-
-      sessionManager.updateActivity(sessionId);
-      const result: any = {
-        page: {
-          url: tab.page.url(),
-          title: await tab.page.title(),
-          type: analysis.pageType,
-          summary: analysis.summary,
-        },
-        elements: filtered,
-        totalElements,
-        truncated,
-        regions,
-        intents: analysis.intents,
-      };
-      // Add stability and dialog info from PageEventTracker
-      if (tab.events) {
-        result.stability = tab.events.getStabilityState();
-        const pending = tab.events.getPendingDialog();
-        if (pending) result.pendingDialog = pending;
-      }
+      const result = await toolActions.getPageInfo(toolCtx, sessionId, tab.id, { maxElements, visibleOnly });
       return textResult(result);
     })
   );
@@ -337,27 +285,8 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     safe(async ({ sessionId: rawSessionId, maxLength }) => {
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
-      const content = await contentExtractor.extract(tab.page);
-      // Truncate sections if maxLength specified
-      if (maxLength && content.sections) {
-        let totalLen = 0;
-        const truncatedSections: typeof content.sections = [];
-        for (const section of content.sections) {
-          const sectionText = section.text || '';
-          if (totalLen + sectionText.length > maxLength) {
-            const remaining = maxLength - totalLen;
-            if (remaining > 0) {
-              truncatedSections.push({ ...section, text: sectionText.slice(0, remaining) });
-            }
-            break;
-          }
-          truncatedSections.push(section);
-          totalLen += sectionText.length;
-        }
-        content.sections = truncatedSections;
-      }
-      sessionManager.updateActivity(sessionId);
-      return textResult(content);
+      const result = await toolActions.getPageContent(toolCtx, sessionId, tab.id, { maxLength });
+      return textResult(result);
     })
   );
 
@@ -436,9 +365,12 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     '滚动页面',
     {
       sessionId: z.string().optional().describe('会话ID，不传则使用默认会话'),
-      direction: z.enum(['down', 'up']).describe('滚动方向'),
+      direction: z.string().describe('滚动方向：down 或 up'),
     },
     safe(async ({ sessionId: rawSessionId, direction }) => {
+      if (direction !== 'down' && direction !== 'up') {
+        throw invalidParameterError('direction must be one of: down, up');
+      }
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
       await executeAction(tab.page, 'scroll', undefined, direction);
@@ -497,13 +429,18 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     {
       sessionId: z.string().optional().describe('会话ID，不传则使用默认会话'),
       key: z.string().describe('按键名称，如 Enter, Escape, Tab, ArrowDown, a, c'),
-      modifiers: z.array(z.enum(['Control', 'Shift', 'Alt', 'Meta'])).optional().describe('修饰键数组，如 ["Control"] 表示 Ctrl+key'),
+      modifiers: z.array(z.string()).optional().describe('修饰键数组，如 ["Control"] 表示 Ctrl+key'),
     },
     safe(async ({ sessionId: rawSessionId, key, modifiers }) => {
       if (modifiers && modifiers.length > 0) {
+        for (const mod of modifiers) {
+          if (!ALLOWED_MODIFIERS.includes(mod as any)) {
+            throw invalidParameterError(`不允许的修饰键: ${mod}。允许: ${ALLOWED_MODIFIERS.join(', ')}`);
+          }
+        }
         // Combo key mode
         if (!isComboAllowed(modifiers, key)) {
-          throw new Error(`不允许的组合键: ${modifiers.join('+')}+${key}`);
+          throw invalidParameterError(`不允许的组合键: ${modifiers.join('+')}+${key}`);
         }
         const sessionId = await resolveSession(rawSessionId);
         const tab = getActiveTab(sessionId);
@@ -525,7 +462,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       }
       // Single key mode (original logic)
       if (!ALLOWED_KEYS.has(key)) {
-        throw new Error(`不允许的按键: ${key}。允许: ${[...ALLOWED_KEYS].join(', ')}`);
+        throw invalidParameterError(`不允许的按键: ${key}。允许: ${[...ALLOWED_KEYS].join(', ')}`);
       }
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
@@ -543,7 +480,9 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
   server.tool(
     'go_back',
     '返回上一页',
-    { sessionId: z.string().optional().describe('会话ID，不传则使用默认会话') },
+    {
+      sessionId: z.string().optional().describe('会话ID，不传则使用默认会话'),
+    },
     safe(async ({ sessionId: rawSessionId }) => {
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
@@ -587,24 +526,29 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
   // ===== wait =====
   server.tool(
     'wait',
-    '等待页面加载',
+    '按条件等待：time / selector / networkidle / element_hidden',
     {
       sessionId: z.string().optional().describe('会话ID，不传则使用默认会话'),
       milliseconds: z.number().optional().describe('等待的毫秒数，默认1000'),
       selector: z.string().optional().describe('等待指定CSS选择器的元素出现'),
-      condition: z.enum(['time', 'selector', 'networkidle', 'element_hidden']).optional().describe('等待条件类型'),
+      condition: z.string().optional().describe('等待条件类型：time / selector / networkidle / element_hidden'),
     },
     safe(async ({ sessionId: rawSessionId, milliseconds, selector, condition }) => {
+      const allowedConditions = ['time', 'selector', 'networkidle', 'element_hidden'] as const;
+      if (condition !== undefined && !allowedConditions.includes(condition as any)) {
+        throw invalidParameterError('condition must be one of: time, selector, networkidle, element_hidden');
+      }
+
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
       // For condition-based waits, default timeout is 10s; for simple time wait, default is 1s
       if (condition === 'networkidle') {
         await tab.page.waitForNetworkIdle({ timeout: milliseconds || 10000 });
       } else if (condition === 'element_hidden') {
-        if (!selector) throw new Error('selector is required for element_hidden condition');
+        if (!selector) throw invalidParameterError('selector is required for element_hidden condition');
         await tab.page.waitForSelector(selector, { hidden: true, timeout: milliseconds || 10000 });
       } else if (condition === 'selector' || (!condition && selector)) {
-        if (!selector) throw new Error('selector is required for selector condition');
+        if (!selector) throw invalidParameterError('selector is required for selector condition');
         await tab.page.waitForSelector(selector, { timeout: milliseconds || 10000 });
       } else {
         await new Promise(r => setTimeout(r, Math.min(milliseconds || 1000, 30000)));
@@ -618,12 +562,15 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
   // ===== execute_javascript =====
   server.tool(
     'execute_javascript',
-    '在当前页面执行 JavaScript 脚本。脚本必须通过表达式或 return 返回数据，console.log 的输出不会返回',
+    '在当前页面执行 JavaScript（仅 local 模式可用）。脚本需通过表达式或 return 返回数据，console.log 不会作为返回值',
     {
       sessionId: z.string().optional().describe('会话ID，不传则使用默认会话'),
       script: z.string().describe('要执行的 JavaScript 代码'),
     },
     safe(async ({ sessionId: rawSessionId, script }) => {
+      if (isRemote) {
+        return errorResult('execute_javascript is disabled in remote mode', ErrorCode.INVALID_PARAMETER);
+      }
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
       let result: any;
@@ -703,10 +650,8 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     },
     safe(async ({ sessionId: rawSessionId, tabId }) => {
       const sessionId = await resolveSession(rawSessionId);
-      const closed = await sessionManager.closeTab(sessionId, tabId);
-      if (!closed) throw new Error(`Tab not found: ${tabId}`);
-      sessionManager.updateActivity(sessionId);
-      return textResult({ success: true });
+      const result = await toolActions.closeTab(toolCtx, sessionId, tabId);
+      return textResult(result);
     })
   );
 
@@ -741,35 +686,8 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     },
     safe(async ({ sessionId: rawSessionId, url }) => {
       const sessionId = await resolveSession(rawSessionId);
-      const tab = await sessionManager.createTab(sessionId);
-      if (!tab) throw new Error(`Session not found: ${sessionId}`);
-      // Auto-switch to the new tab
-      sessionManager.switchTab(sessionId, tab.id);
-      let partial = false;
-      if (url) {
-        const check = validateUrl(url, options?.urlValidation ?? {});
-        if (!check.valid) {
-          const err = new Error(check.reason);
-          (err as any).errorCode = ErrorCode.INVALID_PARAMETER;
-          throw err;
-        }
-        // Inject saved cookies before navigation (consistent with navigate tool)
-        await injectCookiesToPage(tab.page);
-        try {
-          await tab.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        } catch (err: any) {
-          if (err.name === 'TimeoutError' || err.message?.includes('timeout')) {
-            partial = true;
-          } else {
-            throw err;
-          }
-        }
-        tab.url = tab.page.url();
-        // Save cookies after navigation
-        await saveCookiesFromPage(tab.page);
-      }
-      sessionManager.updateActivity(sessionId);
-      return textResult({ tabId: tab.id, url: tab.page.url(), partial });
+      const result = await toolActions.createTab(toolCtx, sessionId, url);
+      return textResult(result);
     })
   );
 
@@ -805,7 +723,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       sessionId: z.string().optional().describe('会话ID，不传则使用默认会话'),
       fullPage: z.boolean().optional().describe('是否截取整个页面（包括滚动区域），默认 false'),
       element_id: z.string().optional().describe('截取指定元素的截图（优先于 fullPage）'),
-      format: z.enum(['png', 'jpeg', 'webp']).optional().describe('截图格式，默认 png'),
+      format: z.string().optional().describe('截图格式：png / jpeg / webp，默认 png'),
       quality: z.number().min(0).max(100).optional().describe('图片质量（仅 jpeg/webp 有效），默认 80'),
     },
     safe(async ({ sessionId: rawSessionId, fullPage, element_id, format, quality }) => {
@@ -813,6 +731,9 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       const tab = getActiveTab(sessionId);
 
       const imgFormat = format || 'png';
+      if (!['png', 'jpeg', 'webp'].includes(imgFormat)) {
+        throw invalidParameterError('format must be one of: png, jpeg, webp');
+      }
       const mimeType = `image/${imgFormat}` as const;
       const screenshotOpts: Record<string, any> = {
         encoding: 'base64',
@@ -846,8 +767,9 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       const pageTitle = await tab.page.title().catch(() => '');
       return {
         content: [
-          { type: 'text' as const, text: JSON.stringify({ captured: true, url: pageUrl, title: pageTitle, fullPage: !!fullPage, element: element_id || null }) },
+          // Some MCP clients only render the first content block; keep image first for compatibility.
           { type: 'image' as const, data: base64, mimeType },
+          { type: 'text' as const, text: JSON.stringify({ captured: true, url: pageUrl, title: pageTitle, fullPage: !!fullPage, element: element_id || null }) },
         ],
       };
     })
@@ -911,10 +833,13 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     '处理页面弹窗（alert/confirm/prompt），接受或拒绝',
     {
       sessionId: z.string().optional().describe('会话ID，不传则使用默认会话'),
-      action: z.enum(['accept', 'dismiss']).describe('accept 接受弹窗，dismiss 拒绝弹窗'),
+      action: z.string().describe('accept 接受弹窗，dismiss 拒绝弹窗'),
       text: z.string().optional().describe('为 prompt 弹窗提供输入文本'),
     },
     safe(async ({ sessionId: rawSessionId, action, text }) => {
+      if (action !== 'accept' && action !== 'dismiss') {
+        throw invalidParameterError('action must be one of: accept, dismiss');
+      }
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
       if (!tab.events) {
@@ -963,14 +888,8 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     safe(async ({ sessionId: rawSessionId, timeout, quietMs }) => {
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
-      if (!tab.events) {
-        return textResult({ stable: true, domStable: true, networkPending: 0, loadState: 'loaded' });
-      }
-      const maxWait = Math.min(timeout ?? 5000, 30000);
-      const stable = await tab.events.waitForStable(maxWait, quietMs);
-      sessionManager.updateActivity(sessionId);
-      const state = tab.events.getStabilityState();
-      return textResult({ ...state, stable });
+      const result = await toolActions.waitForStable(toolCtx, sessionId, tab.id, { timeout, quietMs });
+      return textResult(result);
     })
   );
 
@@ -980,12 +899,15 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     '获取页面网络请求日志',
     {
       sessionId: z.string().optional().describe('会话ID，不传则使用默认会话'),
-      filter: z.enum(['all', 'xhr', 'failed', 'slow']).optional().describe('过滤类型：all=全部, xhr=仅XHR/Fetch, failed=仅失败, slow=慢请求(>1s)'),
+      filter: z.string().optional().describe('过滤类型：all=全部, xhr=仅XHR/Fetch, failed=仅失败, slow=慢请求(>1s)'),
       maxEntries: z.number().optional().describe('最大返回条数，默认50'),
       includeHeaders: z.boolean().optional().describe('是否包含请求/响应头，默认false'),
       urlPattern: z.string().optional().describe('URL 匹配模式（子串匹配）'),
     },
     safe(async ({ sessionId: rawSessionId, filter, maxEntries, includeHeaders, urlPattern }) => {
+      if (filter !== undefined && !['all', 'xhr', 'failed', 'slow'].includes(filter)) {
+        throw invalidParameterError('filter must be one of: all, xhr, failed, slow');
+      }
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
       if (!tab.events) {
@@ -1031,10 +953,13 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     '获取页面控制台日志',
     {
       sessionId: z.string().optional().describe('会话ID，不传则使用默认会话'),
-      level: z.enum(['error', 'warn', 'log', 'info', 'debug', 'all']).optional().describe('日志级别过滤，默认只返回 error+warn'),
+      level: z.string().optional().describe('日志级别过滤：error / warn / log / info / debug / all，默认只返回 error+warn'),
       maxEntries: z.number().optional().describe('最大返回条数，默认50'),
     },
     safe(async ({ sessionId: rawSessionId, level, maxEntries }) => {
+      if (level !== undefined && !['error', 'warn', 'log', 'info', 'debug', 'all'].includes(level)) {
+        throw invalidParameterError('level must be one of: error, warn, log, info, debug, all');
+      }
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
       if (!tab.events) {
@@ -1064,13 +989,16 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
   // ===== upload_file =====
   server.tool(
     'upload_file',
-    '上传文件到 file input 元素',
+    '上传文件到 file input 元素（仅 local 模式可用）',
     {
       sessionId: z.string().optional().describe('会话ID，不传则使用默认会话'),
       element_id: z.string().describe('file input 元素的语义ID'),
       filePath: z.string().describe('要上传的文件路径'),
     },
     safe(async ({ sessionId: rawSessionId, element_id, filePath: rawPath }) => {
+      if (isRemote) {
+        return errorResult('upload_file is disabled in remote mode', ErrorCode.INVALID_PARAMETER);
+      }
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
 
@@ -1122,6 +1050,9 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       return textResult({ downloads: tab.events.getDownloads() });
     })
   );
+
+  // ===== Task Template Tools (delegated to task-tools.ts) =====
+  registerTaskTools(server, toolCtx, runManager, artifactStore, isRemote, safe, resolveSession, createIsolatedSession);
 
   return server;
 }
