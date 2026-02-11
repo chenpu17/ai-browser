@@ -82,3 +82,7 @@ import { createBrowserMcpServer, BrowserManager, SessionManager, BrowsingAgent }
 - [05-roadmap.md](./05-roadmap.md) - 实现路线图
 - [06-testing.md](./06-testing.md) - 自动化测试设计
 - [07-dev-plan.md](./07-dev-plan.md) - 开发计划（关联设计文档）
+- [18-mcp-ai-consumer-guide.md](./18-mcp-ai-consumer-guide.md) - MCP AI Consumer Guide（EN）
+- [18-mcp-ai-consumer-guide-cn.md](./18-mcp-ai-consumer-guide-cn.md) - MCP AI 使用指引（ZH）
+- [19-mcp-ai-readability-roadmap.md](./19-mcp-ai-readability-roadmap.md) - MCP AI Readability Roadmap（EN）
+- [19-mcp-ai-readability-roadmap-cn.md](./19-mcp-ai-readability-roadmap-cn.md) - MCP 面向 AI 可读性优化路线图（ZH）

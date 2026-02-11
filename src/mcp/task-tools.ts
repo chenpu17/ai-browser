@@ -12,15 +12,104 @@ import type { LoginKeepSessionInputs } from '../task/templates/login-keep-sessio
 import { executeMultiTabCompare } from '../task/templates/multi-tab-compare.js';
 import type { MultiTabCompareInputs } from '../task/templates/multi-tab-compare.js';
 import type { CancelToken } from '../task/cancel-token.js';
+import { enrichWithAiMarkdown } from './ai-markdown.js';
 
-function textResult(data: unknown) {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(data) }] };
+function textResult(data: unknown, toolName?: string) {
+  const payload = toolName ? enrichWithAiMarkdown(toolName, data) : data;
+  return { content: [{ type: 'text' as const, text: JSON.stringify(payload) }] };
 }
 
 function makeError(message: string, code: ErrorCode): Error {
   const err = new Error(message);
   (err as any).errorCode = code;
   return err;
+}
+
+function summarizeResult(result: unknown): string {
+  if (result === null || result === undefined) return 'No result payload';
+  if (typeof result === 'string') return result.slice(0, 240);
+  if (typeof result === 'number' || typeof result === 'boolean') return String(result);
+  if (Array.isArray(result)) return `Array(${result.length})`;
+  if (typeof result === 'object') {
+    const keys = Object.keys(result as Record<string, unknown>);
+    return keys.length > 0
+      ? `Object with keys: ${keys.slice(0, 10).join(', ')}`
+      : 'Empty object';
+  }
+  return String(result);
+}
+
+function buildEvidenceRefs(artifactIds: string[]): Array<{ artifactId: string; reason: string }> {
+  return artifactIds.map((artifactId, index) => ({
+    artifactId,
+    reason: index === 0 ? 'primary_result' : 'additional_evidence',
+  }));
+}
+
+type VerificationSnapshot = {
+  pass: boolean;
+  score?: number;
+  missingFields: string[];
+  typeMismatches: string[];
+  reason?: string;
+};
+
+function extractVerification(result: unknown, errorDetails: unknown): VerificationSnapshot | null {
+  const fromResultObject = normalizeVerificationCandidate(result);
+  if (fromResultObject) return fromResultObject;
+
+  const resultObj = asRecord(result);
+  const nestedInResult = normalizeVerificationCandidate(resultObj?.verification);
+  if (nestedInResult) return nestedInResult;
+
+  const errObj = asRecord(errorDetails);
+  const nestedInError = normalizeVerificationCandidate(errObj?.verification);
+  if (nestedInError) return nestedInError;
+
+  return null;
+}
+
+function normalizeVerificationCandidate(value: unknown): VerificationSnapshot | null {
+  const rec = asRecord(value);
+  if (!rec) return null;
+
+  if (typeof rec.pass !== 'boolean') return null;
+
+  const missingFields = Array.isArray(rec.missingFields)
+    ? rec.missingFields.map((item) => String(item)).filter(Boolean)
+    : [];
+  const typeMismatches = Array.isArray(rec.typeMismatches)
+    ? rec.typeMismatches.map((item) => String(item)).filter(Boolean)
+    : [];
+
+  return {
+    pass: rec.pass,
+    score: typeof rec.score === 'number' ? rec.score : undefined,
+    missingFields,
+    typeMismatches,
+    reason: typeof rec.reason === 'string' ? rec.reason : undefined,
+  };
+}
+
+function buildSchemaRepairHints(verification: VerificationSnapshot | null): string[] {
+  if (!verification || verification.pass) return [];
+
+  const hints: string[] = [];
+  if (verification.missingFields.length > 0) {
+    hints.push(`Missing fields: ${verification.missingFields.slice(0, 8).join(', ')}`);
+  }
+  if (verification.typeMismatches.length > 0) {
+    hints.push(`Type mismatches: ${verification.typeMismatches.slice(0, 8).join(', ')}`);
+  }
+  hints.push('For missing fields, collect more page content or element signals before retrying.');
+  hints.push('For type mismatches, normalize result value types to match output schema.');
+  return hints;
+}
+
+function asRecord(value: unknown): Record<string, any> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, any>)
+    : null;
 }
 
 const RUN_STATUSES = [
@@ -58,7 +147,9 @@ export function registerTaskTools(
           executionMode: t.executionMode,
           limits: t.limits,
         })),
-      });
+        hasMore: false,
+        nextCursor: null,
+      }, 'list_task_templates');
     })
   );
 
@@ -236,7 +327,7 @@ export function registerTaskTools(
           mode: 'sync',
           sessionPreserved,
           result: syncResult,
-        });
+        }, 'run_task_template');
       }
 
       return textResult({
@@ -246,7 +337,7 @@ export function registerTaskTools(
         mode: 'async',
         sessionPreserved: templateId === 'login_keep_session' && ownsSession,
         poll: 'Use get_task_run to check progress',
-      });
+      }, 'run_task_template');
     })
   );
 
@@ -263,6 +354,7 @@ export function registerTaskTools(
       if (!run) {
         throw makeError(`Run not found: ${runId}`, ErrorCode.RUN_NOT_FOUND);
       }
+      const verification = extractVerification(run.result, run.error?.details);
       return textResult({
         runId: run.runId,
         templateId: run.templateId,
@@ -272,9 +364,13 @@ export function registerTaskTools(
         progress: run.progress,
         metrics: run.metrics,
         result: run.result,
+        resultSummary: summarizeResult(run.result),
+        verification,
+        schemaRepairHints: buildSchemaRepairHints(verification),
         error: run.error,
         artifactIds: run.artifactIds,
-      });
+        evidenceRefs: buildEvidenceRefs(run.artifactIds),
+      }, 'get_task_run');
     })
   );
 
@@ -301,13 +397,19 @@ export function registerTaskTools(
       }
 
       const typedStatus = status as typeof RUN_STATUSES[number] | undefined;
+      const normalizedOffset = offset ?? 0;
+      const normalizedLimit = limit ?? 50;
       const runs = runManager.list({
         status: typedStatus,
         templateId,
-        limit,
-        offset,
+        limit: normalizedLimit,
+        offset: normalizedOffset,
       });
       const total = runManager.count({ status: typedStatus, templateId });
+      const hasMore = normalizedOffset + runs.length < total;
+      const nextCursor = hasMore
+        ? { offset: normalizedOffset + runs.length, limit: normalizedLimit }
+        : null;
       return textResult({
         runs: runs.map((r) => ({
           runId: r.runId,
@@ -321,7 +423,9 @@ export function registerTaskTools(
           artifactIds: r.artifactIds,
         })),
         total,
-      });
+        hasMore,
+        nextCursor,
+      }, 'list_task_runs');
     })
   );
 
@@ -343,9 +447,9 @@ export function registerTaskTools(
         return textResult({
           success: false,
           reason: `Run is already in terminal state: ${run.status}`,
-        });
+        }, 'cancel_task_run');
       }
-      return textResult({ success: true, runId });
+      return textResult({ success: true, runId }, 'cancel_task_run');
     })
   );
 
@@ -364,7 +468,7 @@ export function registerTaskTools(
       if (!chunk) {
         throw makeError(`Artifact not found: ${artifactId}`, ErrorCode.ARTIFACT_NOT_FOUND);
       }
-      return textResult(chunk);
+      return textResult(chunk, 'get_artifact');
     })
   );
 
@@ -386,7 +490,8 @@ export function registerTaskTools(
         runTtlMs: 30 * 60 * 1000,
         trustLevel: toolCtx.trustLevel,
         isRemote,
-      });
+        supportedModes: ['sync', 'async', 'auto'],
+      }, 'get_runtime_profile');
     })
   );
 }

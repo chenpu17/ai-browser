@@ -84,6 +84,13 @@ Notes:
 - This server currently exposes legacy HTTP+SSE MCP transport (`/mcp/sse` + `/mcp/message`).
 - The message endpoint is `POST /mcp/message?sessionId=...` and is primarily for transport internals.
 
+### 4.1 MCP AI Consumer Guide
+
+For AI-oriented consumption rules (`nextActions`, `hasMore/nextCursor`, `topIssues`, detail levels), see:
+- `docs/18-mcp-ai-consumer-guide.md`
+- `docs/19-mcp-ai-readability-roadmap.md` (P0-P2 roadmap and execution checklist)
+- benchmark command: `npm run baseline:v1` (includes `aiFieldCoverageRate` / `invalidToolCallRate`)
+
 ### 5. Use as a library
 
 ```typescript
@@ -143,6 +150,28 @@ The server currently exposes **35 MCP tools**:
 - **7 task-runtime tools** (template execution, run tracking, artifacts)
 
 Most browser tools accept an optional `sessionId` — omitting it auto-creates/reuses a default session.
+
+AI-oriented tool responses now include additive helper fields on key tools:
+- `aiSchemaVersion`: schema version for AI helper payload
+- `aiDetailLevel`: applied detail level (`brief` / `normal` / `full`)
+- `aiSummary`: short status sentence for fast decision-making
+- `aiMarkdown`: compact, sectioned markdown with high-signal details
+- `aiHints`: suggested next actions (text)
+- `nextActions`: structured next-step suggestions (`tool`, `args`, `reason`)
+- `deltaSummary`: polling-oriented change summary (`key`, `changes`)
+- `schemaRepairGuidance`: repair-oriented hints for schema verification failures
+
+List-like responses are also normalized with:
+- `hasMore` + `nextCursor` for continuation semantics
+- `topIssues` on log-oriented tools (network/console) for quick fault triage
+
+These fields are additive and backward-compatible; existing JSON fields are unchanged.
+
+You can control verbosity via environment variable `AI_MARKDOWN_DETAIL_LEVEL=brief|normal|full` (default: `normal`).
+
+Optional adaptive policy (prototype): `AI_MARKDOWN_ADAPTIVE_POLICY=1`
+- For polling-heavy tools, detail can auto-shift to `brief`
+- On terminal failure states, detail can auto-escalate to `full`
 
 ### Session Management
 
@@ -335,6 +364,7 @@ npm run build       # Build TypeScript
 npm test            # Run tests
 npm run test:run    # Run tests once
 npm run baseline:v1 # Collect v1 baseline report
+npm run benchmark:v1:expanded # Run expanded readability scenarios (P2 prototype)
 npm run stress:v1   # Run 100-task stress report
 ```
 

@@ -199,6 +199,99 @@ describe('task-tools regression coverage', () => {
     expect(closeSession).toHaveBeenCalledWith('sess-isolated');
   });
 
+  it('adds AI markdown fields to task lifecycle tool responses', async () => {
+    const runRes = await mcpClient.callTool({
+      name: 'run_task_template',
+      arguments: {
+        templateId: 'batch_extract_pages',
+        inputs: { urls: ['https://example.com'] },
+        options: { mode: 'sync' },
+      },
+    });
+
+    const runData = parseResult(runRes);
+    expect(runRes.isError).not.toBe(true);
+    expect(runData.aiSummary).toContain('Task run submitted');
+    expect(runData.aiMarkdown).toContain('## Task Run Submitted');
+    expect(Array.isArray(runData.aiHints)).toBe(true);
+    expect(Array.isArray(runData.nextActions)).toBe(true);
+
+    const pollRes = await mcpClient.callTool({
+      name: 'get_task_run',
+      arguments: { runId: runData.runId },
+    });
+    const pollData = parseResult(pollRes);
+    expect(pollData.aiSummary).toContain('Task run status');
+    expect(pollData.aiMarkdown).toContain('## Task Run Status');
+    expect(typeof pollData.resultSummary).toBe('string');
+    expect(Array.isArray(pollData.evidenceRefs)).toBe(true);
+    expect(pollData).toHaveProperty('verification');
+    expect(Array.isArray(pollData.schemaRepairHints)).toBe(true);
+
+    const listRes = await mcpClient.callTool({
+      name: 'list_task_runs',
+      arguments: {},
+    });
+    const listData = parseResult(listRes);
+    expect(listData.aiSummary).toContain('Listed');
+    expect(listData.aiMarkdown).toContain('## Task Run List');
+    expect(typeof listData.hasMore).toBe('boolean');
+    expect(listData).toHaveProperty('nextCursor');
+
+    expect(Array.isArray(pollData.artifactIds)).toBe(true);
+    expect(pollData.artifactIds.length).toBeGreaterThan(0);
+
+    const artifactRes = await mcpClient.callTool({
+      name: 'get_artifact',
+      arguments: { artifactId: pollData.artifactIds[0] },
+    });
+    const artifactData = parseResult(artifactRes);
+    expect(artifactData.aiSummary).toContain('Artifact chunk');
+    expect(artifactData.aiMarkdown).toContain('## Artifact Chunk');
+  });
+
+  it('adds AI markdown fields to template catalog and runtime profile tools', async () => {
+    const templatesRes = await mcpClient.callTool({
+      name: 'list_task_templates',
+      arguments: {},
+    });
+    const templates = parseResult(templatesRes);
+    expect(Array.isArray(templates.templates)).toBe(true);
+    expect(templates.aiSummary).toContain('task templates');
+    expect(templates.aiMarkdown).toContain('## Task Template List');
+    expect(templates.hasMore).toBe(false);
+    expect(templates.nextCursor).toBeNull();
+
+    const profileRes = await mcpClient.callTool({
+      name: 'get_runtime_profile',
+      arguments: {},
+    });
+    const profile = parseResult(profileRes);
+    expect(profile.supportedModes).toEqual(['sync', 'async', 'auto']);
+    expect(profile.aiSummary).toContain('Runtime profile');
+    expect(profile.aiMarkdown).toContain('## Runtime Profile');
+    expect(Array.isArray(profile.nextActions)).toBe(true);
+
+    const runRes = await mcpClient.callTool({
+      name: 'run_task_template',
+      arguments: {
+        templateId: 'batch_extract_pages',
+        inputs: { urls: ['https://example.com'] },
+        options: { mode: 'sync' },
+      },
+    });
+    const runData = parseResult(runRes);
+
+    const cancelRes = await mcpClient.callTool({
+      name: 'cancel_task_run',
+      arguments: { runId: runData.runId },
+    });
+    const cancelData = parseResult(cancelRes);
+    expect(cancelData.success).toBe(false);
+    expect(cancelData.aiSummary).toContain('Cancel task result');
+    expect(cancelData.aiMarkdown).toContain('## Cancel Task Run');
+  });
+
   it('rejects incompatible multi_tab_compare extract/compare settings', async () => {
     const res = await mcpClient.callTool({
       name: 'run_task_template',
@@ -216,6 +309,44 @@ describe('task-tools regression coverage', () => {
     const data = parseResult(res);
     expect(res.isError).toBe(true);
     expect(String(data.error)).toContain('pageInfo=false');
+  });
+
+
+  it('surfaces verification and schema repair hints when result contains verification snapshot', async () => {
+    templateMocks.executeBatchExtract.mockResolvedValueOnce({
+      verification: {
+        pass: false,
+        missingFields: ['companyName'],
+        typeMismatches: ['amount'],
+        reason: 'schema verification failed',
+      },
+      items: [],
+    });
+
+    const runRes = await mcpClient.callTool({
+      name: 'run_task_template',
+      arguments: {
+        templateId: 'batch_extract_pages',
+        inputs: { urls: ['https://example.com'] },
+        options: { mode: 'sync' },
+      },
+    });
+    const runData = parseResult(runRes);
+
+    const pollRes = await mcpClient.callTool({
+      name: 'get_task_run',
+      arguments: { runId: runData.runId },
+    });
+    const pollData = parseResult(pollRes);
+
+    expect(pollData.verification).toMatchObject({
+      pass: false,
+      missingFields: ['companyName'],
+      typeMismatches: ['amount'],
+    });
+    expect(Array.isArray(pollData.schemaRepairHints)).toBe(true);
+    expect(pollData.schemaRepairHints.join(' ')).toContain('Missing fields');
+    expect(pollData.schemaRepairGuidance).toBeTruthy();
   });
 
   it('run_task_template rejects invalid mode with structured error', async () => {

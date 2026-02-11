@@ -43,6 +43,7 @@ export const SYSTEM_PROMPT = `你是一个智能浏览器助手，能够通过�
 
 ## 工具说明
 
+- **优先读取 AI 辅助字段**: 若工具返回 \`aiSummary\` / \`aiHints\` / \`aiMarkdown\` / \`nextActions\`，优先按 \`nextActions\`（结构化）执行；无结构化建议时再用 \`aiSummary\`+\`aiHints\`；需要细节再读 \`aiMarkdown\`。
 - **navigate**: 打开网页，超时时页面可能已部分加载，可继续操作
 - **get_page_info**: 获取可交互元素列表（按钮、链接、输入框等）
 - **get_page_content**: 获取页面文本内容。如果返回空内容，改用 execute_javascript 获取

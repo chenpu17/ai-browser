@@ -133,6 +133,9 @@ describe('MCP Browser Server', () => {
     const nav = parseResult(navRes);
     expect(nav.success).toBe(true);
     expect(nav.page.title).toBe('Test Article');
+    expect(nav.aiSummary).toContain('Navigation');
+    expect(nav.aiMarkdown).toContain('## Navigation Result');
+    expect(Array.isArray(nav.aiHints)).toBe(true);
 
     await mcpClient.callTool({ name: 'close_session', arguments: { sessionId } });
   });
@@ -188,6 +191,11 @@ describe('MCP Browser Server', () => {
     expect(info.page.type).toBe('login');
     expect(Array.isArray(info.elements)).toBe(true);
     expect(info.elements.length).toBeGreaterThan(0);
+    expect(info.aiSummary).toContain('interactive elements');
+    expect(info.aiMarkdown).toContain('## Page Interaction Snapshot');
+    expect(Array.isArray(info.aiHints)).toBe(true);
+    expect(info).toHaveProperty('hasMore');
+    expect(info).toHaveProperty('nextCursor');
 
     await mcpClient.callTool({ name: 'close_session', arguments: { sessionId } });
   });
@@ -486,6 +494,12 @@ describe('MCP Browser Server', () => {
     });
     const list = parseResult(listRes);
     expect(list.tabs.length).toBe(2);
+    expect(list.aiSummary).toContain('tabs');
+    expect(list.aiMarkdown).toContain('## Tab List');
+    expect(Array.isArray(list.aiHints)).toBe(true);
+    expect(Array.isArray(list.nextActions)).toBe(true);
+    expect(list.hasMore).toBe(false);
+    expect(list.nextCursor).toBeNull();
 
     // Switch tab
     const switchRes = await mcpClient.callTool({
@@ -1006,6 +1020,10 @@ describe('MCP Browser Server', () => {
     const info = parseResult(res);
     expect(info.pendingDialog).toBeNull();
     expect(info.dialogHistory).toEqual([]);
+    expect(info.aiSummary).toContain('pending=no');
+    expect(info.aiMarkdown).toContain('## Dialog Status');
+    expect(info.hasMore).toBe(false);
+    expect(info.nextCursor).toBeNull();
 
     await mcpClient.callTool({ name: 'close_session', arguments: { sessionId } });
   });
@@ -1261,6 +1279,11 @@ describe('MCP Browser Server', () => {
     const result = parseResult(res);
     expect(result.logs.length).toBeGreaterThan(0);
     expect(result.totalCount).toBeGreaterThan(0);
+    expect(result.aiSummary).toContain('Network logs');
+    expect(result.aiMarkdown).toContain('## Network Logs');
+    expect(Array.isArray(result.topIssues)).toBe(true);
+    expect(result).toHaveProperty('hasMore');
+    expect(result).toHaveProperty('nextCursor');
 
     await mcpClient.callTool({ name: 'close_session', arguments: { sessionId } });
   });
@@ -1332,6 +1355,11 @@ describe('MCP Browser Server', () => {
     const result = parseResult(res);
     // Default filter is error+warn
     expect(result.logs.length).toBeGreaterThanOrEqual(2);
+    expect(result.aiSummary).toContain('Console logs');
+    expect(result.aiMarkdown).toContain('## Console Logs');
+    expect(Array.isArray(result.topIssues)).toBe(true);
+    expect(result).toHaveProperty('hasMore');
+    expect(result).toHaveProperty('nextCursor');
     const levels = result.logs.map((l: any) => l.level);
     expect(levels).toContain('error');
     expect(levels).toContain('warn');

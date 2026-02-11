@@ -42,6 +42,10 @@ export interface PageInfoResult {
   truncated: boolean;
   regions: any[];
   intents: any[];
+  recommendedByIntent?: Array<{
+    intent: string;
+    suggestedElementIds: string[];
+  }>;
   stability?: any;
   pendingDialog?: any;
 }
@@ -95,6 +99,71 @@ function makeError(message: string, code: ErrorCode): Error {
   const err = new Error(message);
   (err as any).errorCode = code;
   return err;
+}
+
+function recommendElementsByIntent(intents: any[], elements: any[]): Array<{ intent: string; suggestedElementIds: string[] }> {
+  const picks: Array<{ intent: string; suggestedElementIds: string[] }> = [];
+  const scored = elements.map((el: any) => ({
+    id: String(el?.id || ''),
+    type: String(el?.type || ''),
+    label: String(el?.label || '').toLowerCase(),
+  }));
+
+  const pick = (intent: string, keywords: string[], preferredTypes: string[] = [], limit = 3): string[] => {
+    const ranked = scored
+      .map((el) => {
+        let score = 0;
+        if (preferredTypes.includes(el.type)) score += 3;
+        for (const keyword of keywords) {
+          if (el.id.toLowerCase().includes(keyword)) score += 3;
+          if (el.label.includes(keyword)) score += 2;
+        }
+        return { ...el, score };
+      })
+      .filter((el) => el.id && el.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map((el) => el.id);
+    if (ranked.length > 0) {
+      picks.push({ intent, suggestedElementIds: ranked });
+    }
+    return ranked;
+  };
+
+  for (const intent of intents) {
+    const name = String(intent?.name || '').toLowerCase();
+    if (!name) continue;
+    if (name === 'login') {
+      pick(name, ['user', 'email', 'account', 'name'], ['textbox', 'input']);
+      pick(name, ['password', 'pass'], ['textbox', 'input']);
+      pick(name, ['login', 'sign in', 'submit'], ['button', 'link']);
+    } else if (name === 'search') {
+      pick(name, ['search', 'query', 'keyword', 'q'], ['textbox', 'input', 'searchbox']);
+      pick(name, ['search', 'go', 'submit'], ['button', 'link']);
+    } else if (name === 'submit_form') {
+      pick(name, ['submit', 'save', 'confirm', 'continue'], ['button', 'link']);
+    } else if (name === 'send_email') {
+      pick(name, ['to', 'recipient'], ['textbox', 'input']);
+      pick(name, ['subject'], ['textbox', 'input']);
+      pick(name, ['send'], ['button', 'link']);
+    } else if (name === 'select_result') {
+      pick(name, ['result', 'title', 'link'], ['link', 'button']);
+    } else {
+      pick(name, [name], ['button', 'link', 'textbox', 'input']);
+    }
+  }
+
+  const deduped = new Map<string, string[]>();
+  for (const entry of picks) {
+    const current = deduped.get(entry.intent) ?? [];
+    for (const id of entry.suggestedElementIds) {
+      if (!current.includes(id)) current.push(id);
+      if (current.length >= 5) break;
+    }
+    deduped.set(entry.intent, current);
+  }
+
+  return [...deduped.entries()].map(([intent, suggestedElementIds]) => ({ intent, suggestedElementIds }));
 }
 
 // ===== Tool Actions =====
@@ -233,6 +302,7 @@ export async function getPageInfo(
     truncated,
     regions,
     intents: analysis.intents,
+    recommendedByIntent: recommendElementsByIntent(analysis.intents, filtered),
   };
 
   if (tab.events) {

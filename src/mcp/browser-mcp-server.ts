@@ -18,6 +18,7 @@ import type { ToolContext } from '../task/tool-context.js';
 import { RunManager } from '../task/run-manager.js';
 import { ArtifactStore } from '../task/artifact-store.js';
 import { registerTaskTools } from './task-tools.js';
+import { enrichWithAiMarkdown } from './ai-markdown.js';
 
 // Re-export TrustLevel and ErrorCode from canonical locations
 export type { TrustLevel } from '../task/tool-context.js';
@@ -134,8 +135,9 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
   }
 
   // Helper: wrap result as MCP text content
-  function textResult(data: unknown) {
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data) }] };
+  function textResult(data: unknown, toolName?: string) {
+    const payload = toolName ? enrichWithAiMarkdown(toolName, data) : data;
+    return { content: [{ type: 'text' as const, text: JSON.stringify(payload) }] };
   }
 
   // Helper: wrap error as MCP error content
@@ -163,6 +165,32 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     const err = new Error(message);
     (err as any).errorCode = ErrorCode.INVALID_PARAMETER;
     return err;
+  }
+
+  function summarizeNetworkIssues(logs: any[]): Array<{ kind: string; count: number; sample?: string }> {
+    const timeoutLogs = logs.filter((l: any) => String(l?.error || '').toLowerCase().includes('timeout'));
+    const failedLogs = logs.filter((l: any) => Boolean(l?.error));
+    const httpErrorLogs = logs.filter((l: any) => typeof l?.status === 'number' && l.status >= 400);
+    const slowLogs = logs.filter((l: any) => (l?.timing?.duration ?? 0) > 1000);
+
+    const issues: Array<{ kind: string; count: number; sample?: string }> = [];
+    if (timeoutLogs.length > 0) issues.push({ kind: 'timeout', count: timeoutLogs.length, sample: timeoutLogs[0]?.url });
+    if (failedLogs.length > 0) issues.push({ kind: 'request_failed', count: failedLogs.length, sample: failedLogs[0]?.url });
+    if (httpErrorLogs.length > 0) issues.push({ kind: 'http_error', count: httpErrorLogs.length, sample: httpErrorLogs[0]?.url });
+    if (slowLogs.length > 0) issues.push({ kind: 'slow_request', count: slowLogs.length, sample: slowLogs[0]?.url });
+    return issues.slice(0, 5);
+  }
+
+  function summarizeConsoleIssues(logs: any[]): Array<{ kind: string; count: number; sample?: string }> {
+    const levels = ['error', 'warn', 'info', 'log', 'debug'] as const;
+    const issues: Array<{ kind: string; count: number; sample?: string }> = [];
+    for (const level of levels) {
+      const levelLogs = logs.filter((l: any) => l?.level === level);
+      if (levelLogs.length > 0) {
+        issues.push({ kind: level, count: levelLogs.length, sample: levelLogs[0]?.text });
+      }
+    }
+    return issues.slice(0, 5);
   }
 
   // Helper: wrap async handler with try/catch to prevent unhandled exceptions
@@ -208,7 +236,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
         defaultSessionId = session.id;
       }
       options?.onSessionCreated?.(session.id);
-      return textResult({ sessionId: session.id });
+      return textResult({ sessionId: session.id }, 'create_session');
     })
   );
 
@@ -222,7 +250,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     safe(async ({ sessionId: rawSessionId, force }) => {
       // No-op if no sessionId provided and no default session exists
       if (!rawSessionId && !defaultSessionId && !defaultSessionPromise) {
-        return textResult({ success: true, reason: 'No active session to close' });
+        return textResult({ success: true, reason: 'No active session to close' }, 'close_session');
       }
       const sessionId = await resolveSession(rawSessionId);
       await sessionManager.saveAllCookies(sessionId);
@@ -230,7 +258,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       // 默认保留 headful 会话，force=true 时允许主动关闭。
       const session = sessionManager.get(sessionId);
       if (session && !session.headless && !force) {
-        return textResult({ success: true, kept: true, reason: 'headful session preserved (set force=true to close)' });
+        return textResult({ success: true, kept: true, reason: 'headful session preserved (set force=true to close)' }, 'close_session');
       }
 
       const closed = await sessionManager.close(sessionId);
@@ -238,7 +266,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       if (sessionId === defaultSessionId) {
         defaultSessionId = null;
       }
-      return textResult({ success: closed });
+      return textResult({ success: closed }, 'close_session');
     })
   );
 
@@ -253,7 +281,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     safe(async ({ sessionId: rawSessionId, url }) => {
       const sessionId = await resolveSession(rawSessionId);
       const result = await toolActions.navigate(toolCtx, sessionId, url);
-      return textResult(result);
+      return textResult(result, 'navigate');
     })
   );
 
@@ -270,7 +298,15 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
       const result = await toolActions.getPageInfo(toolCtx, sessionId, tab.id, { maxElements, visibleOnly });
-      return textResult(result);
+      const effectiveLimit = maxElements ?? 50;
+      const hasMore = Boolean(result.truncated);
+      const nextCursor = hasMore
+        ? {
+            strategy: 'increase_max_elements',
+            suggestedMaxElements: Math.min(Math.max(effectiveLimit * 2, 100), 1000),
+          }
+        : null;
+      return textResult({ ...result, hasMore, nextCursor }, 'get_page_info');
     })
   );
 
@@ -286,7 +322,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
       const result = await toolActions.getPageContent(toolCtx, sessionId, tab.id, { maxLength });
-      return textResult(result);
+      return textResult(result, 'get_page_content');
     })
   );
 
@@ -326,7 +362,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
         const pending = tab.events.getPendingDialog();
         if (pending) result.dialog = pending;
       }
-      return textResult(result);
+      return textResult(result, 'click');
     })
   );
 
@@ -355,7 +391,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       return textResult({
         success: true,
         page: { url: tab.page.url(), title: await tab.page.title() },
-      });
+      }, 'type_text');
     })
   );
 
@@ -375,7 +411,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       const tab = getActiveTab(sessionId);
       await executeAction(tab.page, 'scroll', undefined, direction);
       sessionManager.updateActivity(sessionId);
-      return textResult({ success: true });
+      return textResult({ success: true }, 'scroll');
     })
   );
 
@@ -458,7 +494,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
         return textResult({
           success: true,
           page: { url: tab.page.url(), title: await tab.page.title() },
-        });
+        }, 'press_key');
       }
       // Single key mode (original logic)
       if (!ALLOWED_KEYS.has(key)) {
@@ -472,7 +508,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       return textResult({
         success: true,
         page: { url: tab.page.url(), title: await tab.page.title() },
-      });
+      }, 'press_key');
     })
   );
 
@@ -492,7 +528,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       return textResult({
         success: true,
         page: { url: tab.page.url(), title: await tab.page.title() },
-      });
+      }, 'go_back');
     })
   );
 
@@ -519,7 +555,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
           score: c.score,
           matchReason: c.matchReason,
         })),
-      });
+      }, 'find_element');
     })
   );
 
@@ -555,7 +591,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       }
 
       sessionManager.updateActivity(sessionId);
-      return textResult({ success: true });
+      return textResult({ success: true }, 'wait');
     })
   );
 
@@ -594,14 +630,14 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       }
       sessionManager.updateActivity(sessionId);
       if (result === undefined || result === null) {
-        return textResult({ result: null, hint: '脚本无返回值。如需获取数据，请在脚本末尾使用表达式（如 document.title）或 return 语句。console.log 的输出不会返回。' });
+        return textResult({ result: null, hint: '脚本无返回值。如需获取数据，请在脚本末尾使用表达式（如 document.title）或 return 语句。console.log 的输出不会返回。' }, 'execute_javascript');
       }
       let serialized = JSON.stringify(result);
       const truncated = serialized && serialized.length > 4000;
       if (truncated) {
         serialized = serialized.slice(0, 4000) + '...(truncated)';
       }
-      return textResult({ result: truncated ? serialized : result, truncated });
+      return textResult({ result: truncated ? serialized : result, truncated }, 'execute_javascript');
     })
   );
 
@@ -619,7 +655,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       const tab = getActiveTab(sessionId);
       await executeAction(tab.page, 'select', element_id, value);
       sessionManager.updateActivity(sessionId);
-      return textResult({ success: true });
+      return textResult({ success: true }, 'select_option');
     })
   );
 
@@ -636,7 +672,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       const tab = getActiveTab(sessionId);
       await executeAction(tab.page, 'hover', element_id);
       sessionManager.updateActivity(sessionId);
-      return textResult({ success: true });
+      return textResult({ success: true }, 'hover');
     })
   );
 
@@ -651,7 +687,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     safe(async ({ sessionId: rawSessionId, tabId }) => {
       const sessionId = await resolveSession(rawSessionId);
       const result = await toolActions.closeTab(toolCtx, sessionId, tabId);
-      return textResult(result);
+      return textResult(result, 'close_tab');
     })
   );
 
@@ -672,7 +708,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       return textResult({
         success: true,
         page: { url: tab.page.url(), title: await tab.page.title() },
-      });
+      }, 'switch_tab');
     })
   );
 
@@ -687,7 +723,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     safe(async ({ sessionId: rawSessionId, url }) => {
       const sessionId = await resolveSession(rawSessionId);
       const result = await toolActions.createTab(toolCtx, sessionId, url);
-      return textResult(result);
+      return textResult(result, 'create_tab');
     })
   );
 
@@ -704,14 +740,17 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       if (!session) throw new Error(`Session not found: ${sessionId}`);
       const tabs = sessionManager.listTabs(sessionId);
       sessionManager.updateActivity(sessionId);
+      const tabItems = await Promise.all(tabs.map(async (t) => {
+        let title = '';
+        try { title = await t.page.title(); } catch {}
+        return { id: t.id, url: t.page.url(), title };
+      }));
       return textResult({
         activeTabId: session.activeTabId,
-        tabs: await Promise.all(tabs.map(async (t) => {
-          let title = '';
-          try { title = await t.page.title(); } catch {}
-          return { id: t.id, url: t.page.url(), title };
-        })),
-      });
+        tabs: tabItems,
+        hasMore: false,
+        nextCursor: null,
+      }, 'list_tabs');
     })
   );
 
@@ -765,11 +804,18 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       sessionManager.updateActivity(sessionId);
       const pageUrl = tab.page.url();
       const pageTitle = await tab.page.title().catch(() => '');
+      const screenshotMeta = enrichWithAiMarkdown('screenshot', {
+        captured: true,
+        url: pageUrl,
+        title: pageTitle,
+        fullPage: !!fullPage,
+        element: element_id || null,
+      });
       return {
         content: [
           // Some MCP clients only render the first content block; keep image first for compatibility.
           { type: 'image' as const, data: base64, mimeType },
-          { type: 'text' as const, text: JSON.stringify({ captured: true, url: pageUrl, title: pageTitle, fullPage: !!fullPage, element: element_id || null }) },
+          { type: 'text' as const, text: JSON.stringify(screenshotMeta) },
         ],
       };
     })
@@ -823,7 +869,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       }
 
       sessionManager.updateActivity(sessionId);
-      return textResult({ success: true });
+      return textResult({ success: true }, 'set_value');
     })
   );
 
@@ -843,15 +889,15 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
       if (!tab.events) {
-        return textResult({ success: false, reason: 'Event tracking not available' });
+        return textResult({ success: false, reason: 'Event tracking not available' }, 'handle_dialog');
       }
       const pending = tab.events.getPendingDialog();
       if (!pending) {
-        return textResult({ success: false, reason: 'No pending dialog' });
+        return textResult({ success: false, reason: 'No pending dialog' }, 'handle_dialog');
       }
       await tab.events.handleDialog(action, text);
       sessionManager.updateActivity(sessionId);
-      return textResult({ success: true, dialog: pending });
+      return textResult({ success: true, dialog: pending }, 'handle_dialog');
     })
   );
 
@@ -866,13 +912,15 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
       if (!tab.events) {
-        return textResult({ pendingDialog: null, dialogHistory: [] });
+        return textResult({ pendingDialog: null, dialogHistory: [], hasMore: false, nextCursor: null }, 'get_dialog_info');
       }
       sessionManager.updateActivity(sessionId);
       return textResult({
         pendingDialog: tab.events.getPendingDialog(),
         dialogHistory: tab.events.getDialogs(),
-      });
+        hasMore: false,
+        nextCursor: null,
+      }, 'get_dialog_info');
     })
   );
 
@@ -889,7 +937,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
       const result = await toolActions.waitForStable(toolCtx, sessionId, tab.id, { timeout, quietMs });
-      return textResult(result);
+      return textResult(result, 'wait_for_stable');
     })
   );
 
@@ -911,7 +959,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
       if (!tab.events) {
-        return textResult({ logs: [], totalCount: 0, truncated: false });
+        return textResult({ logs: [], totalCount: 0, truncated: false, topIssues: [], hasMore: false, nextCursor: null }, 'get_network_logs');
       }
       let logs = tab.events.getNetworkLogs();
       const totalCount = logs.length;
@@ -943,7 +991,12 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       }
 
       sessionManager.updateActivity(sessionId);
-      return textResult({ logs, totalCount, truncated });
+      const hasMore = truncated;
+      const nextCursor = hasMore
+        ? { strategy: 'increase_max_entries', suggestedMaxEntries: Math.min((limit || 50) * 2, 1000) }
+        : null;
+      const topIssues = summarizeNetworkIssues(logs);
+      return textResult({ logs, totalCount, truncated, topIssues, hasMore, nextCursor }, 'get_network_logs');
     })
   );
 
@@ -963,7 +1016,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
       if (!tab.events) {
-        return textResult({ logs: [], truncated: false });
+        return textResult({ logs: [], truncated: false, topIssues: [], hasMore: false, nextCursor: null }, 'get_console_logs');
       }
       let logs = tab.events.getConsoleLogs();
 
@@ -982,7 +1035,12 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       }
 
       sessionManager.updateActivity(sessionId);
-      return textResult({ logs, truncated });
+      const hasMore = truncated;
+      const nextCursor = hasMore
+        ? { strategy: 'increase_max_entries', suggestedMaxEntries: Math.min((limit || 50) * 2, 1000) }
+        : null;
+      const topIssues = summarizeConsoleIssues(logs);
+      return textResult({ logs, truncated, topIssues, hasMore, nextCursor }, 'get_console_logs');
     })
   );
 
@@ -1029,7 +1087,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
 
       await (elementHandle as any).uploadFile(resolvedPath);
       sessionManager.updateActivity(sessionId);
-      return textResult({ success: true, filePath: resolvedPath });
+      return textResult({ success: true, filePath: resolvedPath }, 'upload_file');
     })
   );
 
@@ -1044,10 +1102,10 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
       if (!tab.events) {
-        return textResult({ downloads: [] });
+        return textResult({ downloads: [], hasMore: false, nextCursor: null }, 'get_downloads');
       }
       sessionManager.updateActivity(sessionId);
-      return textResult({ downloads: tab.events.getDownloads() });
+      return textResult({ downloads: tab.events.getDownloads(), hasMore: false, nextCursor: null }, 'get_downloads');
     })
   );
 

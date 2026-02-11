@@ -84,6 +84,13 @@ console.log(created);
 - 当前服务暴露的是 legacy HTTP+SSE MCP 传输（`/mcp/sse` + `/mcp/message`）。
 - 消息端点是 `POST /mcp/message?sessionId=...`，通常由 transport 内部处理，不建议手工调用。
 
+### 4.1 MCP AI 使用指引
+
+关于 AI 消费策略（`nextActions`、`hasMore/nextCursor`、`topIssues`、细节级别），请参考：
+- `docs/18-mcp-ai-consumer-guide-cn.md`
+- `docs/19-mcp-ai-readability-roadmap-cn.md`（P0-P2 路线图与执行清单）
+- 评测命令：`npm run baseline:v1`（包含 `aiFieldCoverageRate` / `invalidToolCallRate`）
+
 ### 5. 作为库使用
 
 ```typescript
@@ -143,6 +150,28 @@ import {
 - **7 个任务运行时工具**（模板执行、运行状态、产物读取）
 
 大多数浏览器工具支持可选 `sessionId` — 不传时自动创建/复用默认会话。
+
+面向 AI 使用场景，关键工具响应新增了可选辅助字段：
+- `aiSchemaVersion`: AI 辅助字段契约版本
+- `aiDetailLevel`: 实际采用的细节级别（`brief` / `normal` / `full`）
+- `aiSummary`: 一句话状态摘要，便于快速决策
+- `aiMarkdown`: 高信号、分节的紧凑 Markdown
+- `aiHints`: 文本形式的下一步建议
+- `nextActions`: 结构化下一步建议（`tool`、`args`、`reason`）
+- `deltaSummary`: 轮询场景变化摘要（`key`、`changes`）
+- `schemaRepairGuidance`: schema 验收失败时的修复导向建议
+
+列表型返回同时统一提供：
+- `hasMore` + `nextCursor` 续传语义
+- 日志类工具的 `topIssues`（网络/控制台）用于快速故障定位
+
+这些字段均为增量返回，保持向后兼容，不影响原有 JSON 字段。
+
+可通过环境变量 `AI_MARKDOWN_DETAIL_LEVEL=brief|normal|full` 控制返回细节级别（默认 `normal`）。
+
+可选自适应策略（原型）：`AI_MARKDOWN_ADAPTIVE_POLICY=1`
+- 轮询类工具会自动偏向 `brief`
+- 终态失败场景会自动提升到 `full`
 
 ### 会话管理
 
@@ -335,6 +364,7 @@ npm run build       # 编译 TypeScript
 npm test            # 运行测试
 npm run test:run    # 单次运行测试
 npm run baseline:v1 # 采集 v1 基线报告
+npm run benchmark:v1:expanded # 运行扩展可读性场景评测（P2 原型）
 npm run stress:v1   # 执行 100 任务压测报告
 ```
 

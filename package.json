@@ -30,7 +30,8 @@
     "prepublishOnly": "npm run build",
     "test:contract": "vitest run tests/login-keep-session.unit.test.ts tests/task-tools.test.ts tests/task-tools-login-contract.test.ts tests/task-tools-regression.test.ts",
     "baseline:v1": "tsx scripts/collect-v1-baseline.ts",
-    "stress:v1": "tsx scripts/stress-v1-tasks.ts"
+    "stress:v1": "tsx scripts/stress-v1-tasks.ts",
+    "benchmark:v1:expanded": "tsx scripts/collect-v1-expanded-benchmark.ts"
   },
   "dependencies": {
     "@fastify/static": "^6.12.0",

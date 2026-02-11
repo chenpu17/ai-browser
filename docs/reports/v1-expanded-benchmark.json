@@ -1,0 +1,151 @@
+{
+  "generatedAt": "2026-02-11T09:15:49.431Z",
+  "durationMs": 3872,
+  "total": 6,
+  "passed": 6,
+  "passRate": 1,
+  "deltaCoverageRate": 1,
+  "adaptiveCoverageRate": 1,
+  "schemaGuidanceCoverageRate": 1,
+  "scenarioResults": [
+    {
+      "id": "schema_repair_guidance",
+      "success": true,
+      "notes": "missing=2, type=1",
+      "details": {
+        "guidance": {
+          "status": "schema_failed",
+          "missingFields": [
+            "companyName",
+            "taxId"
+          ],
+          "typeMismatches": [
+            "amount"
+          ],
+          "recommendedChecks": [
+            "Re-collect fields: companyName, taxId",
+            "Normalize value types for: amount",
+            "Missing fields: companyName, taxId"
+          ],
+          "retryAdvice": "Retry only after collecting evidence for missing/type-mismatched fields."
+        },
+        "nextActions": [
+          {
+            "tool": "get_artifact",
+            "args": {
+              "artifactId": "artifact_schema_benchmark"
+            },
+            "reason": "Fetch first evidence artifact.",
+            "priority": "high"
+          },
+          {
+            "tool": "get_page_content",
+            "args": {
+              "sessionId": "sess_schema_benchmark"
+            },
+            "reason": "Collect richer textual evidence for schema-missing fields.",
+            "priority": "high"
+          },
+          {
+            "tool": "get_page_info",
+            "args": {
+              "sessionId": "sess_schema_benchmark",
+              "maxElements": 120
+            },
+            "reason": "Collect structured element state to repair type mismatches.",
+            "priority": "medium"
+          }
+        ],
+        "aiSummary": "Task run status: run_schema_benchmark -> failed (schema gaps: missing=2, type=1)"
+      }
+    },
+    {
+      "id": "adaptive_task_polling",
+      "success": true,
+      "notes": "status=running, detail=brief",
+      "details": {
+        "runId": "a9faec4d-7e6c-4b53-9a4c-0f1460fe3e99",
+        "status": "running",
+        "level": "brief",
+        "policy": {
+          "mode": "adaptive",
+          "source": "env",
+          "reason": "adaptive policy: non-terminal task polling prefers brief detail"
+        }
+      }
+    },
+    {
+      "id": "delta_task_run",
+      "success": true,
+      "notes": "first=initial snapshot; second=no significant change",
+      "details": {
+        "runId": "ab4b1731-8d77-49eb-9f9f-9483b6726be7",
+        "firstDelta": {
+          "key": "get_task_run:ab4b1731-8d77-49eb-9f9f-9483b6726be7",
+          "changes": [
+            "initial snapshot"
+          ]
+        },
+        "secondDelta": {
+          "key": "get_task_run:ab4b1731-8d77-49eb-9f9f-9483b6726be7",
+          "changes": [
+            "no significant change"
+          ]
+        },
+        "status": "running"
+      }
+    },
+    {
+      "id": "delta_console_logs",
+      "success": true,
+      "notes": "second delta: no significant change",
+      "details": {
+        "firstDelta": {
+          "key": "get_console_logs:default",
+          "changes": [
+            "initial snapshot"
+          ]
+        },
+        "secondDelta": {
+          "key": "get_console_logs:default",
+          "changes": [
+            "no significant change"
+          ]
+        }
+      }
+    },
+    {
+      "id": "run_list_pagination",
+      "success": true,
+      "notes": "hasMore=true, cursor={\"offset\":1,\"limit\":1}",
+      "details": {
+        "firstDelta": {
+          "key": "list_task_runs:default",
+          "changes": [
+            "initial snapshot"
+          ]
+        },
+        "secondDelta": {
+          "key": "list_task_runs:default",
+          "changes": [
+            "latest run changed: a4353133-5299-471b-8ee1-9927a6a0b9b7 -> b9700171-016d-416e-8b0f-1e35266240ab"
+          ]
+        }
+      }
+    },
+    {
+      "id": "partial_failure_mix",
+      "success": true,
+      "notes": "status=partial_success",
+      "details": {
+        "status": "partial_success",
+        "summary": {
+          "total": 2,
+          "succeeded": 1,
+          "failed": 1
+        },
+        "aiSummary": "Task run submitted: 998f6258-6519-4d62-b8d2-73bc3b64ead7 (partial_success)"
+      }
+    }
+  ]
+}

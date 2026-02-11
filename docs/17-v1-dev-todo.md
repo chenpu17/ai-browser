@@ -67,3 +67,29 @@
 5. 全量回归测试（152 tests）通过 ✅
 6. 任务最小前端页（`/tasks.html`、`/task-result.html`）完成 ✅
 7. 100-run 压测完成（成功率 100.0%，P95 1270ms）✅
+
+## Post-v1：MCP 面向 AI 可读性优化（P0-P2）
+
+> 详细路线图：`docs/19-mcp-ai-readability-roadmap-cn.md`
+
+### P0（基础固化）
+
+- [x] MCP 关键工具统一补充 AI 辅助字段（`aiSummary` / `aiMarkdown` / `nextActions`）
+- [x] 列表/日志工具统一续传语义（`hasMore` / `nextCursor`）
+- [x] network/console 返回 `topIssues`
+- [x] 文档与消费指南（README + docs/18）
+
+### P1（决策质量提升）
+
+- [x] 列表/日志工具 stop/continue 信号增强（nextCursor 感知）
+- [x] `nextActions` 质量校准（reason/priority 一致化）
+- [x] `brief` 模式内容压缩与高信号优先顺序固化
+- [x] 基线脚本增加“无效工具调用率”与“辅助字段采用率”统计
+- [x] 补充轮询与修复链路的消费示例
+
+### P2（自适应与增量摘要）
+
+- [x] 自适应 detail-level 策略（按任务阶段调整）
+- [x] 轮询结果 delta 摘要（仅返回变化项）
+- [x] schema 约束任务的修复导向建议增强
+- [x] 扩展评测集（长任务/抖动页面/部分成功恢复）
