@@ -79,6 +79,38 @@
   - 关键事件日志（步骤开始/结束/重试/失败）
   - 运行观测与排障手册（`11-observability-runbook-v0.1.md`）
 
+### Phase 5.5: MCP + Agent 层智能化 ✅ 已完成
+
+**目标**: 提升 Agent 的输出质量、记忆能力、效率和可观测性
+
+**交付物**:
+- 自适应内容截断（`content-budget.ts`，按工具类别分配 token 预算）
+- 工具使用追踪器（`tool-usage-tracker.ts`，循环/振荡/无效重试检测）
+- 智能错误恢复（`error-recovery.ts`，按错误码分策略恢复）
+- 对话历史管理器（`conversation-manager.ts`，自动压缩旧消息）
+- Token 用量追踪（`token-tracker.ts`）
+- 页面状态 Diff（`page-state-cache.ts`，同页面仅返回增删改）
+- 3 个复合 MCP 工具（`fill_form`、`click_and_wait`、`navigate_and_extract`）
+- 进度估算器（`progress-estimator.ts`，基于工具调用模式的启发式估算）
+- 结构化思考框架（prompt 工程引导 LLM 推理）
+- 多模型基础设施（`reasoningModel` 配置预留）
+- 任务分解（`SubGoal` 支持）
+
+### Phase 6: Web UI 体验优化（规划中）
+
+**目标**: 提升 Web UI 的可用性、信息密度和交互体验
+
+**交付物（规划）**:
+- Agent 进度条（消费后端 `progress` 事件）
+- Task 页面集成到主 SPA 导航
+- 工具调用消息人性化（替代原始 JSON）
+- Settings 连接测试按钮
+- 聊天历史 localStorage 持久化
+- 截图刷新动画
+- 移动端响应式优化
+
+详细计划见 `docs/22-webui-improvement-plan.md`
+
 ## 技术栈
 
 | 层级 | 技术选型 | 说明 |

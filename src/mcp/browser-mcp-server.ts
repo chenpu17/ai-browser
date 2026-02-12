@@ -297,16 +297,57 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     safe(async ({ sessionId: rawSessionId, maxElements, visibleOnly }) => {
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
-      const result = await toolActions.getPageInfo(toolCtx, sessionId, tab.id, { maxElements, visibleOnly });
-      const effectiveLimit = maxElements ?? 50;
-      const hasMore = Boolean(result.truncated);
+      // Fetch with a generous limit first to measure page complexity
+      const fetchLimit = maxElements ?? 200;
+      const result = await toolActions.getPageInfo(toolCtx, sessionId, tab.id, { maxElements: fetchLimit, visibleOnly });
+      const totalElements = Array.isArray(result.elements) ? result.elements.length : 0;
+
+      // Adaptive limit: if caller specified maxElements, respect it; otherwise auto-adjust
+      let effectiveLimit: number;
+      if (maxElements !== undefined) {
+        effectiveLimit = maxElements;
+      } else if (totalElements <= 30) {
+        // Small page — return all
+        effectiveLimit = totalElements;
+      } else if (totalElements <= 100) {
+        // Medium page — default 50, prioritize inputs > buttons > links
+        effectiveLimit = 50;
+      } else {
+        // Complex page — default 30, but always include intent-recommended elements
+        effectiveLimit = 30;
+      }
+
+      // Prioritize elements: inputs first, then buttons, then links, then rest
+      let elements = Array.isArray(result.elements) ? result.elements : [];
+      if (elements.length > effectiveLimit) {
+        const intentIds = new Set<string>();
+        if (Array.isArray(result.recommendedByIntent)) {
+          for (const rec of result.recommendedByIntent) {
+            if (Array.isArray(rec?.suggestedElementIds)) {
+              for (const id of rec.suggestedElementIds) intentIds.add(id);
+            }
+          }
+        }
+        const intentElements = elements.filter((e: any) => intentIds.has(e.id));
+        const rest = elements.filter((e: any) => !intentIds.has(e.id));
+        const inputs = rest.filter((e: any) => e.type === 'input' || e.type === 'textarea' || e.type === 'select');
+        const buttons = rest.filter((e: any) => e.type === 'button' || e.type === 'submit');
+        const links = rest.filter((e: any) => e.type === 'link');
+        const others = rest.filter((e: any) =>
+          !['input', 'textarea', 'select', 'button', 'submit', 'link'].includes(e.type)
+        );
+        const prioritized = [...intentElements, ...inputs, ...buttons, ...links, ...others];
+        elements = prioritized.slice(0, effectiveLimit);
+      }
+
+      const hasMore = totalElements > effectiveLimit;
       const nextCursor = hasMore
         ? {
             strategy: 'increase_max_elements',
             suggestedMaxElements: Math.min(Math.max(effectiveLimit * 2, 100), 1000),
           }
         : null;
-      return textResult({ ...result, hasMore, nextCursor }, 'get_page_info');
+      return textResult({ ...result, elements, totalElements, hasMore, nextCursor }, 'get_page_info');
     })
   );
 
@@ -1106,6 +1147,159 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       }
       sessionManager.updateActivity(sessionId);
       return textResult({ downloads: tab.events.getDownloads(), hasMore: false, nextCursor: null }, 'get_downloads');
+    })
+  );
+
+  // ===== Composite Tools =====
+
+  // fill_form: fill multiple form fields and optionally submit
+  server.tool(
+    'fill_form',
+    '一次填写多个表单字段并可选提交。减少多次 type_text 调用',
+    {
+      sessionId: z.string().optional().describe('会话ID，不传则使用默认会话'),
+      fields: z.array(z.object({
+        element_id: z.string().describe('输入框的语义ID'),
+        value: z.string().describe('要输入的值'),
+      })).describe('要填写的字段列表'),
+      submit: z.object({
+        element_id: z.string().optional().describe('提交按钮的语义ID'),
+        pressEnter: z.boolean().optional().describe('是否按回车提交'),
+      }).optional().describe('提交方式'),
+    },
+    safe(async ({ sessionId: rawSessionId, fields, submit }) => {
+      const sessionId = await resolveSession(rawSessionId);
+      const tab = getActiveTab(sessionId);
+      const results: Array<{ element_id: string; success: boolean; error?: string }> = [];
+
+      for (const field of fields) {
+        try {
+          await executeAction(tab.page, 'type', field.element_id, field.value);
+          results.push({ element_id: field.element_id, success: true });
+        } catch (err: any) {
+          results.push({ element_id: field.element_id, success: false, error: err.message });
+        }
+      }
+
+      let submitResult: { success: boolean; error?: string } | undefined;
+      if (submit) {
+        try {
+          if (submit.element_id) {
+            await executeAction(tab.page, 'click', submit.element_id);
+            await new Promise(r => setTimeout(r, 200));
+          } else if (submit.pressEnter) {
+            await Promise.all([
+              tab.page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 5000 }).catch(() => {}),
+              tab.page.keyboard.press('Enter'),
+            ]);
+          }
+          submitResult = { success: true };
+        } catch (err: any) {
+          submitResult = { success: false, error: err.message };
+        }
+      }
+
+      await saveCookiesFromPage(tab.page);
+      sessionManager.updateActivity(sessionId);
+      return textResult({
+        fieldResults: results,
+        submitResult,
+        page: { url: tab.page.url(), title: await tab.page.title() },
+      }, 'fill_form');
+    })
+  );
+
+  // click_and_wait: click then auto-wait for stability/navigation
+  server.tool(
+    'click_and_wait',
+    '点击元素后自动等待页面稳定或导航完成',
+    {
+      sessionId: z.string().optional().describe('会话ID，不传则使用默认会话'),
+      element_id: z.string().describe('要点击的元素的语义ID'),
+      waitFor: z.string().optional().describe('等待条件: stable(默认) / navigation / selector'),
+      selector: z.string().optional().describe('当 waitFor=selector 时，等待此CSS选择器出现'),
+    },
+    safe(async ({ sessionId: rawSessionId, element_id, waitFor, selector }) => {
+      const sessionId = await resolveSession(rawSessionId);
+      const tab = getActiveTab(sessionId);
+      const waitType = waitFor || 'stable';
+
+      // Click
+      await executeAction(tab.page, 'click', element_id);
+      await new Promise(r => setTimeout(r, 200));
+
+      // Wait
+      let waitResult: { stable: boolean; method: string } = { stable: true, method: waitType };
+      try {
+        if (waitType === 'navigation') {
+          await tab.page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 });
+        } else if (waitType === 'selector' && selector) {
+          await tab.page.waitForSelector(selector, { timeout: 10000 });
+        } else {
+          // stable: wait for network idle + DOM quiet
+          await tab.page.waitForNetworkIdle({ timeout: 5000 }).catch(() => {});
+        }
+      } catch {
+        waitResult.stable = false;
+      }
+
+      tab.url = tab.page.url();
+      await saveCookiesFromPage(tab.page);
+
+      // Check for popups
+      let newTabCreated: string | undefined;
+      if (tab.events) {
+        const popups = tab.events.getPopupPages();
+        for (const popupPage of popups) {
+          const newTab = await sessionManager.registerPopupAsTab(sessionId, popupPage);
+          if (newTab) newTabCreated = newTab.id;
+        }
+        tab.events.clearPopupPages();
+      }
+
+      sessionManager.updateActivity(sessionId);
+      const result: any = {
+        success: true,
+        waitResult,
+        page: { url: tab.page.url(), title: await tab.page.title() },
+      };
+      if (newTabCreated) result.newTabCreated = newTabCreated;
+      if (tab.events) {
+        const pending = tab.events.getPendingDialog();
+        if (pending) result.dialog = pending;
+      }
+      return textResult(result, 'click_and_wait');
+    })
+  );
+
+  // navigate_and_extract: navigate then immediately extract content
+  server.tool(
+    'navigate_and_extract',
+    '导航到URL后立即提取内容，减少两次独立调用',
+    {
+      sessionId: z.string().optional().describe('会话ID，不传则使用默认会话'),
+      url: z.string().describe('要导航到的URL'),
+      extract: z.string().optional().describe('提取类型: content(默认) / elements / both'),
+    },
+    safe(async ({ sessionId: rawSessionId, url, extract }) => {
+      const sessionId = await resolveSession(rawSessionId);
+      const extractType = extract || 'content';
+
+      // Navigate
+      const navResult = await toolActions.navigate(toolCtx, sessionId, url);
+      const tab = getActiveTab(sessionId);
+
+      const result: any = { navigation: navResult };
+
+      // Extract based on type
+      if (extractType === 'content' || extractType === 'both') {
+        result.content = await toolActions.getPageContent(toolCtx, sessionId, tab.id, {});
+      }
+      if (extractType === 'elements' || extractType === 'both') {
+        result.elements = await toolActions.getPageInfo(toolCtx, sessionId, tab.id, {});
+      }
+
+      return textResult(result, 'navigate_and_extract');
     })
   );
 

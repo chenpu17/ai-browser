@@ -60,7 +60,10 @@ type ToolName =
   | 'list_task_runs'
   | 'cancel_task_run'
   | 'get_artifact'
-  | 'get_runtime_profile';
+  | 'get_runtime_profile'
+  | 'fill_form'
+  | 'click_and_wait'
+  | 'navigate_and_extract';
 
 export function enrichWithAiMarkdown(toolName: string, data: unknown): unknown {
   if (!isObject(data)) return data;
@@ -136,6 +139,9 @@ function normalizeToolName(toolName: string): ToolName | null {
     'cancel_task_run',
     'get_artifact',
     'get_runtime_profile',
+    'fill_form',
+    'click_and_wait',
+    'navigate_and_extract',
   ];
   return direct.includes(toolName as ToolName) ? (toolName as ToolName) : null;
 }
@@ -199,6 +205,12 @@ function buildAiMarkdown(toolName: ToolName, data: AnyRecord): string {
       return formatArtifact(data);
     case 'get_runtime_profile':
       return formatRuntimeProfile(data);
+    case 'fill_form':
+      return formatFillForm(data);
+    case 'click_and_wait':
+      return formatClickAndWait(data);
+    case 'navigate_and_extract':
+      return formatNavigateAndExtract(data);
     default:
       return '';
   }
@@ -310,6 +322,22 @@ function buildAiSummary(toolName: ToolName, data: AnyRecord): string {
       return `Artifact chunk: ${asString(data.artifactId) || 'unknown-artifact'} (${numberOrNull(data.length) ?? 0} bytes)`;
     case 'get_runtime_profile':
       return `Runtime profile: maxConcurrentRuns=${numberOrNull(data.maxConcurrentRuns) ?? '-'}, trustLevel=${asString(data.trustLevel) || '-'}`;
+    case 'fill_form': {
+      const results = Array.isArray(data.results) ? data.results : [];
+      const ok = results.filter((r: any) => r?.success).length;
+      const submitOk = data.submitResult ? boolText(data.submitResult.success) : 'skipped';
+      return `Form filled: ${ok}/${results.length} fields succeeded, submit=${submitOk}`;
+    }
+    case 'click_and_wait': {
+      const clickOk = boolText(data.clickResult?.success);
+      const waitOk = boolText(data.waitResult?.success);
+      return `Click+wait: click=${clickOk}, wait=${waitOk}`;
+    }
+    case 'navigate_and_extract': {
+      const navOk = boolText(data.navigateResult?.success);
+      const title = asString(data.navigateResult?.page?.title) || '-';
+      return `Navigate+extract: nav=${navOk}, page=${title}`;
+    }
     default:
       return `${toolName} completed`;
   }
@@ -417,6 +445,21 @@ function buildAiHints(toolName: ToolName, data: AnyRecord): string[] {
       return ['If complete=false, increase offset and call get_artifact again.'];
     case 'get_runtime_profile':
       return ['Use runtime limits to tune task batch size, mode, and polling strategy.'];
+    case 'fill_form':
+      return [
+        'Check individual field results for failures; retry failed fields individually with type_text.',
+        'If submit was skipped, click the submit button or use press_key Enter.',
+      ];
+    case 'click_and_wait':
+      return [
+        'Call get_page_info to inspect the page after click+wait completes.',
+        'If waitResult failed, try wait_for_stable manually with a longer timeout.',
+      ];
+    case 'navigate_and_extract':
+      return [
+        'Review extracted content; if incomplete, call get_page_content with scroll.',
+        'Use get_page_info if you need interactive elements instead of text content.',
+      ];
     default:
       return [];
   }
@@ -667,6 +710,30 @@ function buildNextActions(toolName: ToolName, data: AnyRecord, detailLevel: Deta
           priority: 'high',
         });
       }
+      break;
+    case 'fill_form': {
+      const fieldResults = Array.isArray(data.results) ? data.results : [];
+      const failed = fieldResults.filter((r: any) => !r?.success);
+      if (failed.length > 0) {
+        add({ tool: 'type_text', reason: 'Retry failed fields individually with type_text', priority: 'high' });
+      }
+      if (!data.submitResult) {
+        add({ tool: 'click', reason: 'Submit the form by clicking the submit button', priority: 'high' });
+      }
+      add({ tool: 'get_page_info', reason: 'Inspect page state after form submission', priority: 'medium' });
+      break;
+    }
+    case 'click_and_wait':
+      add({ tool: 'get_page_info', reason: 'Inspect page elements after click+wait', priority: 'high' });
+      if (!data.waitResult?.success) {
+        add({ tool: 'wait_for_stable', reason: 'Wait failed; retry with explicit stability check', priority: 'medium' });
+      }
+      break;
+    case 'navigate_and_extract':
+      if (data.extractResult?.sections?.length === 0) {
+        add({ tool: 'get_page_content', reason: 'No content extracted; try scrolling and re-extracting', priority: 'high' });
+      }
+      add({ tool: 'get_page_info', reason: 'Inspect interactive elements if interaction is needed', priority: 'medium' });
       break;
     default:
       break;
@@ -1119,6 +1186,104 @@ function formatRuntimeProfile(data: AnyRecord): string {
   return lines.join('\n');
 }
 
+function formatFillForm(data: AnyRecord): string {
+  const results = Array.isArray(data.results) ? data.results : [];
+  const lines = [
+    '## Fill Form Result',
+    '',
+    `- Fields Attempted: ${results.length}`,
+    `- Succeeded: ${results.filter((r: any) => r?.success).length}`,
+    `- Failed: ${results.filter((r: any) => !r?.success).length}`,
+  ];
+
+  if (results.length > 0) {
+    lines.push('', '| element_id | success | error |', '|---|---|---|');
+    for (const r of results) {
+      const id = asString(r?.elementId) || '-';
+      const ok = boolText(r?.success);
+      const err = asString(r?.error) || '-';
+      lines.push(`| \`${tableSafe(id)}\` | ${ok} | ${tableSafe(compactText(err, 80))} |`);
+    }
+  }
+
+  if (data.submitResult) {
+    lines.push('', '### Submit Result', '');
+    lines.push(`- Success: ${boolText(data.submitResult.success)}`);
+    if (data.submitResult.page) {
+      lines.push(`- URL: ${asString(data.submitResult.page.url) || '-'}`);
+      lines.push(`- Title: ${asString(data.submitResult.page.title) || '-'}`);
+    }
+  }
+
+  lines.push('', '### Recommended Next Step', '', '- Call `get_page_info` to verify form submission result.');
+  return lines.join('\n');
+}
+
+function formatClickAndWait(data: AnyRecord): string {
+  const lines = [
+    '## Click and Wait Result',
+    '',
+    `- Click Success: ${boolText(data.clickResult?.success)}`,
+    `- Wait Success: ${boolText(data.waitResult?.success)}`,
+  ];
+
+  if (data.clickResult?.page) {
+    lines.push(`- URL: ${asString(data.clickResult.page.url) || '-'}`);
+    lines.push(`- Title: ${asString(data.clickResult.page.title) || '-'}`);
+  }
+  if (data.clickResult?.newTabCreated) {
+    lines.push(`- New Tab Created: ${asString(data.clickResult.newTabCreated)}`);
+  }
+  if (data.waitResult && !data.waitResult.success) {
+    lines.push(`- Wait Reason: ${asString(data.waitResult.reason) || 'timeout or instability'}`);
+  }
+
+  lines.push('', '### Recommended Next Step', '', '- Call `get_page_info` to inspect the page after click+wait.');
+  return lines.join('\n');
+}
+
+function formatNavigateAndExtract(data: AnyRecord): string {
+  const lines = [
+    '## Navigate and Extract Result',
+    '',
+  ];
+
+  // Navigation part
+  if (data.navigateResult) {
+    lines.push(`- Nav Success: ${boolText(data.navigateResult.success)}`);
+    lines.push(`- URL: ${asString(data.navigateResult.page?.url) || '-'}`);
+    lines.push(`- Title: ${asString(data.navigateResult.page?.title) || '-'}`);
+    if (typeof data.navigateResult.statusCode === 'number') {
+      lines.push(`- HTTP Status: ${data.navigateResult.statusCode}`);
+    }
+  }
+
+  // Extract part
+  if (data.extractResult) {
+    const sections = Array.isArray(data.extractResult.sections) ? data.extractResult.sections : [];
+    // Sort by attention descending so the most relevant content is shown first
+    const sorted = [...sections].sort((a, b) => (numberOrNull(b?.attention) ?? 0) - (numberOrNull(a?.attention) ?? 0));
+    const topSections = sorted.slice(0, 20);
+    lines.push(`- Sections Extracted: ${sections.length}`);
+    if (topSections.length > 0) {
+      lines.push('', '### Key Text Blocks', '');
+      for (const section of topSections) {
+        const attention = numberOrNull(section?.attention);
+        const level = typeof attention === 'number' ? `[attention=${attention.toFixed(2)}]` : '';
+        lines.push(`- ${level} ${compactText(asString(section?.text) || '-', 400)}`);
+      }
+    }
+  }
+
+  if (data.elementsResult) {
+    const elements = Array.isArray(data.elementsResult.elements) ? data.elementsResult.elements : [];
+    lines.push(`- Elements Found: ${elements.length}`);
+  }
+
+  lines.push('', '### Recommended Next Step', '', '- If content is incomplete, scroll and call `get_page_content` again.');
+  return lines.join('\n');
+}
+
 function formatNavigate(data: AnyRecord): string {
   const lines = [
     '## Navigation Result',
@@ -1137,7 +1302,7 @@ function formatNavigate(data: AnyRecord): string {
     lines.push(`- Pending Dialog: ${asString(data.dialog.type) || 'yes'}`);
   }
 
-  lines.push('', '### Recommended Next Step', '', '- Call `get_page_info` to identify actionable elements.');
+  lines.push('', '### Recommended Next Step', '', '- To extract text content: call `get_page_content`.', '- To interact with elements: call `get_page_info`.');
   return lines.join('\n');
 }
 
@@ -1232,7 +1397,9 @@ function formatPageInfo(data: AnyRecord): string {
 function formatPageContent(data: AnyRecord): string {
   const detail = resolveDetailLevel(data);
   const sections = Array.isArray(data.sections) ? data.sections : [];
-  const topSections = sections.slice(0, pickByDetail(detail, { brief: 6, normal: 12, full: 24 }));
+  // Sort by attention descending so the most relevant content is shown first
+  const sorted = [...sections].sort((a, b) => (numberOrNull(b?.attention) ?? 0) - (numberOrNull(a?.attention) ?? 0));
+  const topSections = sorted.slice(0, pickByDetail(detail, { brief: 6, normal: 20, full: 30 }));
 
   if (detail === 'brief') {
     const topSnippet = topSections.slice(0, 2).map((section) => compactText(asString(section?.text) || '-', 80)).join(' | ');
@@ -1262,7 +1429,7 @@ function formatPageContent(data: AnyRecord): string {
     for (const section of topSections) {
       const attention = numberOrNull(section?.attention);
       const level = typeof attention === 'number' ? `[attention=${attention.toFixed(2)}]` : '[attention=-]';
-      lines.push(`- ${level} ${compactText(asString(section?.text) || '-', 240)}`);
+      lines.push(`- ${level} ${compactText(asString(section?.text) || '-', 400)}`);
     }
   }
 

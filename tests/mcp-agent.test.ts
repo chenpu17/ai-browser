@@ -166,7 +166,7 @@ describe('BrowsingAgent', () => {
 
     // Verify tools were discovered by checking MCP listTools directly
     const { tools } = await mcpClient.listTools();
-    expect(tools.length).toBe(35); // 35 MCP tools (28 browser + 7 task runtime)
+    expect(tools.length).toBe(38); // 38 MCP tools (28 browser + 3 composite + 7 task runtime)
     // done tool is added by agent internally, not from MCP
 
     try { await mcpClient.close(); } catch {}

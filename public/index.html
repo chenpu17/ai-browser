@@ -565,7 +565,27 @@ body {
   justify-content: center;
   background: #010409;
   padding: 12px;
+  position: relative;
 }
+.screenshot-loading::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 1;
+}
+.screenshot-loading::after {
+  content: '';
+  position: absolute;
+  width: 24px; height: 24px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  z-index: 2;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.screenshot-updated { box-shadow: inset 0 0 0 2px var(--accent); transition: box-shadow 0.3s ease; }
 .preview-body img {
   max-width: 100%;
   max-height: 100%;
@@ -660,6 +680,26 @@ body {
   color: var(--accent);
 }
 .msg-tool-call .label { color: var(--accent); font-weight: 600; }
+.msg-tool-call .tool-desc { color: var(--text-primary); font-size: 13px; }
+.msg-tool-call details.tool-raw {
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.msg-tool-call details.tool-raw summary {
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  background: var(--bg-surface);
+}
+.msg-tool-call details.tool-raw summary:hover { color: var(--text-secondary); }
+.msg-tool-call details.tool-raw pre {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 11px;
+}
 .msg-tool-call pre {
   margin: 4px 0 0;
   color: var(--text-primary);
@@ -746,6 +786,35 @@ body {
   font-style: normal;
 }
 
+/* Progress bar */
+.progress-bar-wrap {
+  height: 3px;
+  background: var(--bg-overlay);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 0;
+  display: none;
+}
+.progress-bar-wrap.active { display: block; }
+.progress-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+  width: 0%;
+}
+.progress-info {
+  display: none;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px 16px;
+  gap: 12px;
+  background: var(--bg-surface);
+}
+.progress-info.active { display: flex; align-items: center; }
+.progress-phase { text-transform: capitalize; color: var(--text-secondary); }
+.progress-percent { color: var(--accent); font-weight: 600; }
+
 /* Typing indicator */
 .typing-indicator {
   display: none;
@@ -812,6 +881,141 @@ body {
   justify-content: flex-end;
 }
 
+/* ===== Tasks View Styles ===== */
+.tasks-toolbar {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 20px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.tasks-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+.task-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.task-card:hover { border-color: var(--accent); }
+.task-card .task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.task-card .task-id {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: monospace;
+}
+.task-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+}
+.task-status.running { background: rgba(88,166,255,0.15); color: var(--accent); }
+.task-status.done { background: rgba(35,134,54,0.15); color: #3fb950; }
+.task-status.failed { background: rgba(218,54,51,0.15); color: #f85149; }
+.task-status.pending { background: var(--bg-overlay); color: var(--text-muted); }
+.task-card .task-goal {
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-card .task-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.task-detail {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+.task-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.task-detail-back {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 8px;
+}
+.task-detail-back:hover { text-decoration: underline; }
+.task-detail .meta-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  row-gap: 8px;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+.task-detail .meta-key { color: var(--text-muted); }
+.task-detail pre {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  overflow: auto;
+  max-height: 400px;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.task-create-form {
+  max-width: 600px;
+}
+.task-create-form label {
+  display: block;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 12px 0 4px;
+}
+.task-create-form input,
+.task-create-form textarea {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  outline: none;
+}
+.task-create-form input:focus,
+.task-create-form textarea:focus { border-color: var(--accent); }
+.task-create-form textarea { min-height: 80px; resize: vertical; }
+.task-create-form .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.task-create-form .form-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 8px;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 900px) {
   .sem-body { flex-direction: column; padding-bottom: 28px; }
@@ -820,6 +1024,23 @@ body {
   #view-agent .agent-main { flex-direction: column; }
   .chat-panel, .preview-panel { width: 100%; border-right: none; }
   .preview-panel { border-top: 1px solid var(--border); }
+  .tasks-list { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+  .app-logo { font-size: 13px; }
+  .nav-tab { padding: 5px 10px; font-size: 12px; }
+  .preview-panel { max-height: 40vh; }
+  .progress-info { padding: 3px 12px; font-size: 10px; }
+  .modal { width: 95vw; padding: 16px; }
+  .task-create-form .form-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .preview-panel { display: none; }
+  .chat-panel { width: 100%; border-right: none; }
+  .chat-input-bar input { font-size: 16px; padding: 12px 14px; }
+  .msg-tool-result .result-content { max-height: 80px; }
+  .header-right { gap: 4px; }
+  .btn { padding: 5px 8px; font-size: 12px; }
 }
   </style>
 </head>
@@ -830,6 +1051,7 @@ body {
   <div class="nav-tabs">
     <button class="nav-tab active" onclick="switchView('semantic')">Semantic</button>
     <button class="nav-tab" onclick="switchView('agent')">Agent</button>
+    <button class="nav-tab" onclick="switchView('tasks')">Tasks</button>
   </div>
   <div class="header-right" id="headerRight">
     <button class="btn" id="btnCloseSession" style="display:none" onclick="Sem.closeSession()">Close Session</button>
@@ -912,6 +1134,14 @@ body {
           <div class="typing-dot"></div>
           <div class="typing-dot"></div>
         </div>
+        <div class="progress-bar-wrap" id="progressBar">
+          <div class="progress-bar-fill" id="progressFill"></div>
+        </div>
+        <div class="progress-info" id="progressInfo">
+          <span class="progress-phase" id="progressPhase"></span>
+          <span class="progress-percent" id="progressPercent"></span>
+          <span id="progressSteps"></span>
+        </div>
         <div class="chat-input-bar">
           <input type="text" id="taskInput" placeholder="Enter a task, e.g.: Open Baidu and search for weather">
           <button class="btn-send" id="sendBtn" onclick="Agent.start()">Send</button>
@@ -934,9 +1164,20 @@ body {
       </div>
     </div>
   </div>
-</main>
 
-<!-- ===== Settings Modal (shared) ===== -->
+  <!-- Tasks View -->
+  <div id="view-tasks" class="view">
+    <div class="tasks-toolbar">
+      <button class="btn btn-primary" id="btnNewTask" onclick="Tasks.showCreate()">+ New Task</button>
+      <button class="btn" onclick="Tasks.refreshList()">Refresh</button>
+    </div>
+    <div id="tasksList" class="tasks-list">
+      <div class="placeholder-text">Loading tasks...</div>
+    </div>
+    <div id="taskDetail" class="task-detail" style="display:none"></div>
+    <div id="taskCreate" class="task-detail" style="display:none"></div>
+  </div>
+</main>
 <div class="modal-overlay hidden" id="settingsModal">
   <div class="modal">
     <h2>Model Settings</h2>
@@ -955,8 +1196,10 @@ body {
     </label>
     <div class="modal-btns">
       <button class="btn" onclick="closeSettings()">Cancel</button>
+      <button class="btn" id="btnTestConn" onclick="testConnection()">Test Connection</button>
       <button class="btn btn-save" onclick="saveSettings()">Save</button>
     </div>
+    <div id="connTestResult" style="margin-top:8px;font-size:12px;display:none;"></div>
   </div>
 </div>
 
@@ -1024,16 +1267,60 @@ function saveSettings() {
   closeSettings();
 }
 
+function testConnection() {
+  var btn = document.getElementById('btnTestConn');
+  var result = document.getElementById('connTestResult');
+  btn.disabled = true;
+  btn.textContent = 'Testing...';
+  result.style.display = 'block';
+  result.style.color = 'var(--text-muted)';
+  result.textContent = 'Connecting...';
+
+  var body = {
+    baseURL: document.getElementById('cfgBaseURL').value.trim(),
+    model: document.getElementById('cfgModel').value.trim(),
+    apiKey: document.getElementById('cfgApiKey').value.trim(),
+  };
+
+  fetch('/v1/llm/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.ok) {
+      result.style.color = '#3fb950';
+      result.textContent = '\u2713 Connected — ' + (data.model || 'OK') + ' (' + (data.latencyMs || '?') + 'ms)';
+    } else {
+      result.style.color = '#f85149';
+      result.textContent = '\u2717 Failed: ' + (data.error || 'Unknown error');
+    }
+  }).catch(function(err) {
+    result.style.color = '#f85149';
+    result.textContent = '\u2717 ' + err.message;
+  }).finally(function() {
+    btn.disabled = false;
+    btn.textContent = 'Test Connection';
+  });
+}
+
 // ========== Navigation ==========
 function switchView(view) {
   App.currentView = view;
   location.hash = view;
+  // Clean up Tasks polling when leaving
+  if (view !== 'tasks' && Tasks.pollTimer) {
+    clearInterval(Tasks.pollTimer);
+    Tasks.pollTimer = null;
+  }
   document.getElementById('view-semantic').classList.toggle('active', view === 'semantic');
   document.getElementById('view-agent').classList.toggle('active', view === 'agent');
+  document.getElementById('view-tasks').classList.toggle('active', view === 'tasks');
   // Update nav tabs
   document.querySelectorAll('.nav-tab').forEach(function(tab) {
     tab.classList.toggle('active', tab.textContent.toLowerCase() === view);
   });
+  if (view === 'tasks') Tasks.refreshList();
   updateHeaderButtons();
 }
 
@@ -1053,7 +1340,7 @@ function updateHeaderButtons() {
 // Hash routing
 window.addEventListener('hashchange', function() {
   var hash = location.hash.replace('#', '');
-  var view = (hash === 'agent') ? 'agent' : 'semantic';
+  var view = (hash === 'agent') ? 'agent' : (hash === 'tasks') ? 'tasks' : 'semantic';
   if (view !== App.currentView) switchView(view);
 });
 
@@ -1251,7 +1538,10 @@ var Sem = {
       .then(function(data) {
         if (data.image) {
           if (data.image && data.image.indexOf('data:image/') === 0) {
-            self.screenshotHtml = '<img src="' + data.image + '" alt="screenshot">';
+            var _simg = document.createElement('img');
+            _simg.src = data.image;
+            _simg.alt = 'screenshot';
+            self.screenshotHtml = _simg.outerHTML;
           }
           if (self.rightTab === 'screenshot') self.renderRightContent();
         }
@@ -1616,6 +1906,9 @@ var Agent = {
     document.getElementById('btnStop').style.display = 'none';
     this.agentId = null;
     this.showTyping(false);
+    document.getElementById('progressBar').classList.remove('active');
+    document.getElementById('progressInfo').classList.remove('active');
+    document.getElementById('progressFill').style.width = '0%';
     updateHeaderButtons();
   },
 
@@ -1632,6 +1925,7 @@ var Agent = {
     document.getElementById('agentViewElements').style.display = 'none';
     this.renderPreview();
     this.resetUI();
+    ChatStore.clear();
   },
 
   showTyping: function(show) {
@@ -1691,9 +1985,26 @@ Agent.handleEvent = function(ev) {
       self.addMsg('system', 'Agent is waiting for your input...');
       self.showInputDialog(ev.requestId, ev.question, ev.fields);
       break;
+    case 'progress':
+      if (ev.progress) {
+        var p = ev.progress;
+        document.getElementById('progressFill').style.width = p.percent + '%';
+        document.getElementById('progressPhase').textContent = p.phase || '';
+        document.getElementById('progressPercent').textContent = p.percent + '%';
+        document.getElementById('progressSteps').textContent =
+          (p.stepsRemaining != null && p.stepsRemaining > 0) ? '~' + p.stepsRemaining + ' steps left' : '';
+        document.getElementById('progressBar').classList.add('active');
+        document.getElementById('progressInfo').classList.add('active');
+      }
+      break;
     case 'done':
       self.addMsg('done', ev.success ? (ev.result || 'Done') : (ev.error || 'Failed'), null, ev.success);
-      self.addMsg('system', 'Total steps: ' + ev.iterations);
+      var summary = 'Total steps: ' + ev.iterations;
+      if (ev.tokenUsage && ev.tokenUsage.total) {
+        var tu = ev.tokenUsage;
+        summary += ' | Tokens: ' + tu.total.toLocaleString() + ' (in: ' + tu.input.toLocaleString() + ' / out: ' + tu.output.toLocaleString() + ')';
+      }
+      self.addMsg('system', summary);
       if (self.currentTask) {
         self.conversationHistory.push({ role: 'user', content: self.currentTask });
         self.conversationHistory.push({ role: 'assistant', content: ev.result || ev.error || 'Done' });
@@ -1719,6 +2030,7 @@ Agent.addMsg = function(type, content, iteration, extra, extra2) {
 
   var el = document.createElement('div');
   el.className = 'msg';
+  var self = this;
 
   switch (type) {
     case 'user':
@@ -1735,9 +2047,10 @@ Agent.addMsg = function(type, content, iteration, extra, extra2) {
       break;
     case 'tool_call':
       el.className = 'msg msg-tool-call';
-      el.innerHTML = this.stepTag(iteration) +
-        '<div class="tool-header"><span class="tool-icon">\u25B6</span> <span class="label">' + esc(content) + '</span></div>' +
-        '<pre>' + esc(JSON.stringify(extra, null, 2)) + '</pre>';
+      var desc = self.humanizeToolCall(content, extra);
+      el.innerHTML = self.stepTag(iteration) +
+        '<div class="tool-header"><span class="tool-icon">\u25B6</span> <span class="tool-desc">' + esc(desc) + '</span></div>' +
+        '<details class="tool-raw"><summary>Raw params</summary><pre>' + esc(JSON.stringify(extra, null, 2)) + '</pre></details>';
       break;
     case 'tool_result':
       el.className = 'msg msg-tool-result ' + (extra ? 'success' : 'fail');
@@ -1772,6 +2085,7 @@ Agent.addMsg = function(type, content, iteration, extra, extra2) {
 
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
+  ChatStore.save();
 };
 
 Agent.toggleExpand = function(id, btn) {
@@ -1784,6 +2098,39 @@ Agent.stepTag = function(n) {
   if (n == null) return '';
   return '<span class="step-tag">Step ' + n + '</span>';
 };
+
+Agent.humanizeToolCall = function(name, args) {
+  args = args || {};
+  var map = {
+    navigate: function(a) { return 'Navigate: ' + (a.url || ''); },
+    click: function(a) { return 'Click: ' + (a.elementId || a.element_id || ''); },
+    type_text: function(a) { return 'Type: "' + (a.text || '').slice(0, 40) + '"'; },
+    get_page_info: function() { return 'Get page elements'; },
+    get_page_content: function() { return 'Extract page content'; },
+    find_element: function(a) { return 'Search: "' + (a.query || '') + '"'; },
+    screenshot: function() { return 'Take screenshot'; },
+    scroll: function(a) { return 'Scroll ' + (a.direction || 'down'); },
+    press_key: function(a) { return 'Press key: ' + (a.key || ''); },
+    select_option: function(a) { return 'Select: ' + (a.value || a.text || ''); },
+    fill_form: function(a) { return 'Fill form (' + (a.fields ? a.fields.length : 0) + ' fields)'; },
+    click_and_wait: function(a) { return 'Click & wait: ' + (a.element_id || ''); },
+    navigate_and_extract: function(a) { return 'Navigate & extract: ' + (a.url || ''); },
+    hover: function(a) { return 'Hover: ' + (a.elementId || a.element_id || ''); },
+    go_back: function() { return 'Go back'; },
+    wait: function(a) { return 'Wait: ' + (a.condition || (a.ms + 'ms')); },
+    wait_for_stable: function() { return 'Wait for page stable'; },
+    done: function(a) { return 'Done: ' + (a.result || '').slice(0, 50); },
+    set_value: function(a) { return 'Set value: ' + (a.elementId || a.element_id || ''); },
+    upload_file: function() { return 'Upload file'; },
+    execute_javascript: function() { return 'Execute JavaScript'; },
+    create_tab: function() { return 'Create new tab'; },
+    list_tabs: function() { return 'List tabs'; },
+    switch_tab: function(a) { return 'Switch to tab ' + (a.tabId || ''); },
+    close_tab: function() { return 'Close tab'; },
+  };
+  var fn = map[name];
+  return fn ? fn(args) : name;
+};
 </script>
 
 <script>
@@ -1791,6 +2138,15 @@ Agent.stepTag = function(n) {
 Agent.formatMdResult = function(toolName, summary) {
   try {
     var obj = JSON.parse(summary);
+    // Priority 1: use aiMarkdown from backend MCP enrichment layer
+    if (typeof obj.aiMarkdown === 'string' && obj.aiMarkdown.length > 0) {
+      return '## ' + toolName + '\n\n' + obj.aiMarkdown;
+    }
+    // Priority 2: use aiSummary as fallback
+    if (typeof obj.aiSummary === 'string' && obj.aiSummary.length > 0) {
+      return '## ' + toolName + '\n\n' + obj.aiSummary;
+    }
+    // Priority 3: manual formatting for tools without aiMarkdown
     if (toolName === 'get_page_info' && obj.elements) {
       var md = '## Page: ' + (obj.page?.title || '') + '\n\n';
       md += '**URL:** ' + (obj.page?.url || '') + '\n\n';
@@ -1801,33 +2157,10 @@ Agent.formatMdResult = function(toolName, summary) {
       });
       return md;
     }
-    if (toolName === 'get_page_content') {
-      var md = '## ' + (obj.title || 'Page Content') + '\n\n';
-      if (obj.sections && obj.sections.length > 0) {
-        obj.sections.forEach(function(s) {
-          var stars = s.attention >= 0.7 ? '\u2605\u2605\u2605' : s.attention >= 0.4 ? '\u2605\u2605' : '\u2605';
-          md += '**[' + stars + ']** ' + s.text + '\n\n';
-        });
-      } else {
-        md += '_No content sections extracted._\n';
-      }
-      return md;
-    }
-    if (toolName === 'navigate') {
+    if (toolName === 'navigate' && obj.page) {
       return '## Navigate\n\n**URL:** ' + (obj.page?.url || '') + '\n\n**Title:** ' + (obj.page?.title || '');
     }
-    if (toolName === 'find_element') {
-      var md = '## Find Element: ' + (obj.query || '') + '\n\n';
-      if (obj.candidates && obj.candidates.length > 0) {
-        md += '| ID | Label | Score |\n|---|---|---|\n';
-        obj.candidates.forEach(function(c) {
-          md += '| `' + c.id + '` | ' + (c.label || '-') + ' | ' + c.score + ' |\n';
-        });
-      } else {
-        md += 'No matches found.';
-      }
-      return md;
-    }
+    // Fallback: compact JSON
     return '## ' + toolName + '\n\n```json\n' + JSON.stringify(obj, null, 2) + '\n```';
   } catch (e) {
     return '## ' + toolName + '\n\n```\n' + summary + '\n```';
@@ -1837,11 +2170,16 @@ Agent.formatMdResult = function(toolName, summary) {
 Agent.refreshScreenshot = function() {
   var self = this;
   if (!self.sessionId) return;
+  var body = document.getElementById('previewBody');
+  if (self.previewMode === 'screenshot') body.classList.add('screenshot-loading');
   fetch('/v1/sessions/' + self.sessionId + '/screenshot')
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.image && data.image.indexOf('data:image/') === 0) {
-        self.latestScreenshotHtml = '<img src="' + data.image + '" alt="screenshot">';
+        var _img = document.createElement('img');
+        _img.src = data.image;
+        _img.alt = 'screenshot';
+        self.latestScreenshotHtml = _img.outerHTML;
       }
       return fetch('/v1/sessions/' + self.sessionId);
     }).then(function(r) { return r.json(); })
@@ -1850,8 +2188,13 @@ Agent.refreshScreenshot = function() {
         var tab = info.tabs.find(function(t) { return t.id === info.activeTabId; }) || info.tabs[0];
         document.getElementById('previewUrl').textContent = tab.url || '';
       }
-      if (self.previewMode === 'screenshot') self.renderPreview();
-    }).catch(function() {});
+      body.classList.remove('screenshot-loading');
+      if (self.previewMode === 'screenshot') {
+        self.renderPreview();
+        body.classList.add('screenshot-updated');
+        setTimeout(function() { body.classList.remove('screenshot-updated'); }, 400);
+      }
+    }).catch(function() { body.classList.remove('screenshot-loading'); });
 };
 </script>
 
@@ -1951,6 +2294,217 @@ Agent.cancelInput = function(requestId) {
 </script>
 
 <script>
+// ===== ChatStore: localStorage persistence =====
+var CHAT_STORE_KEY = 'ai_browser_chat_history';
+var ChatStore = {
+  _saveTimer: null,
+  save: function() {
+    if (ChatStore._saveTimer) clearTimeout(ChatStore._saveTimer);
+    ChatStore._saveTimer = setTimeout(ChatStore._doSave, 500);
+  },
+  _doSave: function() {
+    ChatStore._saveTimer = null;
+    try {
+      var msgs = [];
+      var container = document.getElementById('chatMessages');
+      container.querySelectorAll('.msg').forEach(function(el) {
+        var type = '';
+        if (el.classList.contains('msg-user')) type = 'user';
+        else if (el.classList.contains('msg-system')) type = 'system';
+        else if (el.classList.contains('msg-thinking')) type = 'thinking';
+        else if (el.classList.contains('msg-tool-call')) type = 'tool_call';
+        else if (el.classList.contains('msg-tool-result')) type = 'tool_result';
+        else if (el.classList.contains('msg-error')) type = 'error';
+        else if (el.classList.contains('msg-done')) type = 'done';
+        if (type) msgs.push({ type: type, html: el.outerHTML });
+      });
+      if (msgs.length === 0) return;
+      if (msgs.length > 50) msgs = msgs.slice(-50);
+      var data = {
+        messages: msgs,
+        conversationHistory: Agent.conversationHistory,
+        savedAt: Date.now()
+      };
+      localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(data));
+    } catch(e) { /* quota exceeded or other error */ }
+  },
+  load: function() {
+    try {
+      var raw = localStorage.getItem(CHAT_STORE_KEY);
+      if (!raw) return;
+      var data = JSON.parse(raw);
+      if (!data.messages || data.messages.length === 0) return;
+      var container = document.getElementById('chatMessages');
+      var ph = container.querySelector('.placeholder-text');
+      if (ph) ph.remove();
+      data.messages.forEach(function(m) {
+        var wrapper = document.createElement('div');
+        wrapper.innerHTML = DOMPurify.sanitize(m.html);
+        if (wrapper.firstChild) container.appendChild(wrapper.firstChild);
+      });
+      if (data.conversationHistory) {
+        Agent.conversationHistory = data.conversationHistory;
+      }
+    } catch(e) { /* parse error */ }
+  },
+  clear: function() {
+    localStorage.removeItem(CHAT_STORE_KEY);
+  }
+};
+</script>
+
+<script>
+// ===== Tasks: SPA integration =====
+var Tasks = {
+  pollTimer: null,
+  currentTaskId: null,
+
+  refreshList: function() {
+    var list = document.getElementById('tasksList');
+    list.innerHTML = '<div class="placeholder-text">Loading...</div>';
+    document.getElementById('taskDetail').style.display = 'none';
+    document.getElementById('taskCreate').style.display = 'none';
+    fetch('/v1/tasks').then(function(r) { return r.json(); }).then(function(data) {
+      var tasks = data.tasks || [];
+      if (tasks.length === 0) {
+        list.innerHTML = '<div class="placeholder-text">No tasks yet. Click "+ New Task" to create one.</div>';
+        return;
+      }
+      list.innerHTML = '';
+      tasks.forEach(function(t) {
+        var card = document.createElement('div');
+        card.className = 'task-card';
+        card.onclick = function() { Tasks.showResult(t.taskId); };
+        var safeStatus = ['running','done','pending','failed'].indexOf(t.status) >= 0 ? t.status : 'pending';
+        var statusCls = 'task-status ' + safeStatus;
+        card.innerHTML = '<div class="' + statusCls + '">' + esc(t.status || 'unknown') + '</div>' +
+          '<div style="font-weight:500;margin:6px 0">' + esc((t.goal || '').slice(0, 80)) + '</div>' +
+          '<div style="font-size:12px;color:var(--text-muted)">' + new Date(t.createdAt).toLocaleString() + '</div>';
+        list.appendChild(card);
+      });
+    }).catch(function() {
+      list.innerHTML = '<div class="placeholder-text">Failed to load tasks.</div>';
+    });
+  },
+
+  showCreate: function() {
+    document.getElementById('tasksList').style.display = 'none';
+    document.getElementById('taskDetail').style.display = 'none';
+    var panel = document.getElementById('taskCreate');
+    panel.style.display = 'block';
+    panel.innerHTML =
+      '<h3 style="margin:0 0 16px">New Task</h3>' +
+      '<div class="task-create-form">' +
+        '<label>Goal</label>' +
+        '<textarea id="tcGoal" rows="3" placeholder="Describe what you want the agent to do..."></textarea>' +
+        '<label>Start URL (optional)</label>' +
+        '<input type="text" id="tcUrl" placeholder="https://...">' +
+        '<label>Max Steps</label>' +
+        '<input type="number" id="tcMaxSteps" value="20" min="1" max="200">' +
+        '<div style="display:flex;gap:8px;margin-top:12px">' +
+          '<button class="btn btn-primary" onclick="Tasks.submitTask()">Run Task</button>' +
+          '<button class="btn" onclick="Tasks.backToList()">Cancel</button>' +
+        '</div>' +
+      '</div>';
+  },
+
+  backToList: function() {
+    document.getElementById('taskCreate').style.display = 'none';
+    document.getElementById('taskDetail').style.display = 'none';
+    document.getElementById('tasksList').style.display = '';
+    Tasks.refreshList();
+  },
+
+  submitTask: function() {
+    var goal = document.getElementById('tcGoal').value.trim();
+    if (!goal) return;
+    var url = document.getElementById('tcUrl').value.trim();
+    var maxSteps = parseInt(document.getElementById('tcMaxSteps').value) || 20;
+    if (url) goal = goal + '\nStart URL: ' + url;
+
+    var cfg = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    var body = {
+      goal: goal,
+      maxIterations: maxSteps,
+      apiKey: cfg.apiKey || undefined,
+      baseURL: cfg.baseURL || undefined,
+      model: cfg.model || undefined,
+      headless: cfg.headless !== undefined ? cfg.headless : true,
+    };
+
+    fetch('/v1/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(function(r) { return r.json(); }).then(function(data) {
+      if (data.taskId) {
+        Tasks.showResult(data.taskId);
+      } else {
+        alert('Failed to create task: ' + JSON.stringify(data));
+      }
+    }).catch(function(err) {
+      alert('Error: ' + err.message);
+    });
+  },
+
+  showResult: function(taskId) {
+    Tasks.currentTaskId = taskId;
+    document.getElementById('tasksList').style.display = 'none';
+    document.getElementById('taskCreate').style.display = 'none';
+    var panel = document.getElementById('taskDetail');
+    panel.style.display = 'block';
+    panel.innerHTML = '<div class="placeholder-text">Loading task...</div>';
+
+    fetch('/v1/tasks/' + taskId).then(function(r) { return r.json(); }).then(function(data) {
+      var safeStatus = ['running','done','pending','failed'].indexOf(data.status) >= 0 ? data.status : 'pending';
+      var statusCls = 'task-status ' + safeStatus;
+      var html = '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">' +
+        '<button class="btn" onclick="Tasks.backToList()">&larr; Back</button>' +
+        '<span class="' + statusCls + '">' + esc(data.status || '') + '</span>' +
+        '<span style="font-size:12px;color:var(--text-muted)">' + esc(taskId.slice(0, 8)) + '</span>' +
+      '</div>';
+      html += '<div style="margin-bottom:12px"><strong>Goal:</strong> ' + esc(data.goal || '(unknown)') + '</div>';
+      if (data.result) {
+        html += '<div style="margin-bottom:12px"><strong>Result:</strong></div>' +
+          '<pre style="background:var(--bg-secondary);padding:12px;border-radius:6px;overflow:auto;max-height:300px">' +
+          esc(typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2)) + '</pre>';
+      }
+      if (data.error) {
+        html += '<div style="color:var(--danger)"><strong>Error:</strong> ' + esc(data.error) + '</div>';
+      }
+      html += '<div id="taskEvents" style="margin-top:16px"></div>';
+      panel.innerHTML = html;
+
+      if (data.status === 'running') {
+        Tasks.pollStatus(taskId);
+      }
+    }).catch(function() {
+      panel.innerHTML = '<div class="placeholder-text">Failed to load task.</div>' +
+        '<button class="btn" onclick="Tasks.backToList()" style="margin-top:12px">&larr; Back</button>';
+    });
+  },
+
+  pollStatus: function(taskId) {
+    if (Tasks.pollTimer) clearInterval(Tasks.pollTimer);
+    Tasks.pollTimer = setInterval(function() {
+      if (Tasks.currentTaskId !== taskId) {
+        clearInterval(Tasks.pollTimer);
+        Tasks.pollTimer = null;
+        return;
+      }
+      fetch('/v1/tasks/' + taskId).then(function(r) { return r.json(); }).then(function(data) {
+        if (data.status !== 'running') {
+          clearInterval(Tasks.pollTimer);
+          Tasks.pollTimer = null;
+          Tasks.showResult(taskId);
+        }
+      }).catch(function() {});
+    }, 3000);
+  }
+};
+</script>
+
+<script>
 // ===== Keyboard shortcuts =====
 document.getElementById('taskInput').addEventListener('keypress', function(e) {
   if (e.key === 'Enter' && !document.getElementById('sendBtn').disabled) Agent.start();
@@ -1987,11 +2541,9 @@ document.getElementById('typeValue').addEventListener('keypress', function(e) {
 // ========== Init ==========
 (function() {
   var hash = location.hash.replace('#', '');
-  if (hash === 'agent') {
-    switchView('agent');
-  } else {
-    switchView('semantic');
-  }
+  var view = (hash === 'agent') ? 'agent' : (hash === 'tasks') ? 'tasks' : 'semantic';
+  switchView(view);
+  ChatStore.load();
 })();
 </script>
 </body>

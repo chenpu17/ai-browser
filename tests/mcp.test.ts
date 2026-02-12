@@ -97,11 +97,11 @@ describe('MCP Browser Server', () => {
     const { tools } = await mcpClient.listTools();
     const names = tools.map(t => t.name).sort();
     expect(names).toEqual([
-      'cancel_task_run', 'click', 'close_session', 'close_tab', 'create_session', 'create_tab',
-      'execute_javascript', 'find_element', 'get_artifact', 'get_console_logs', 'get_dialog_info',
+      'cancel_task_run', 'click', 'click_and_wait', 'close_session', 'close_tab', 'create_session', 'create_tab',
+      'execute_javascript', 'fill_form', 'find_element', 'get_artifact', 'get_console_logs', 'get_dialog_info',
       'get_downloads', 'get_network_logs', 'get_page_content', 'get_page_info',
       'get_runtime_profile', 'get_task_run', 'go_back', 'handle_dialog', 'hover', 'list_tabs',
-      'list_task_runs', 'list_task_templates', 'navigate', 'press_key',
+      'list_task_runs', 'list_task_templates', 'navigate', 'navigate_and_extract', 'press_key',
       'run_task_template', 'screenshot', 'scroll', 'select_option', 'set_value',
       'switch_tab', 'type_text', 'upload_file', 'wait', 'wait_for_stable',
     ]);

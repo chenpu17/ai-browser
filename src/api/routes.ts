@@ -560,6 +560,19 @@ export function registerRoutes(
       throw new ApiError(ErrorCode.INVALID_REQUEST, 'task is required', 400);
     }
 
+    // Validate messages format
+    if (messages !== undefined && messages !== null) {
+      if (!Array.isArray(messages)) {
+        throw new ApiError(ErrorCode.INVALID_REQUEST, 'messages must be an array', 400);
+      }
+      const validRoles = ['user', 'assistant', 'system', 'tool'];
+      for (const msg of messages) {
+        if (!msg || typeof msg !== 'object' || !validRoles.includes(msg.role)) {
+          throw new ApiError(ErrorCode.INVALID_REQUEST, `Invalid message: each message must have a valid role (${validRoles.join('/')})`, 400);
+        }
+      }
+    }
+
     // Concurrency limit
     const activeCount = [...runningAgents.values()].filter(e => !e.finished).length;
     if (activeCount >= MAX_CONCURRENT_AGENTS) {
@@ -709,6 +722,7 @@ export function registerRoutes(
     updatedAt: number;
     result?: any;
     error?: string;
+    goal?: string;
     hardTimeoutTimer?: ReturnType<typeof setTimeout>;
     cleanupTimer?: ReturnType<typeof setTimeout>;
     closeResources: () => Promise<void>;
@@ -821,7 +835,12 @@ export function registerRoutes(
         runAgentGoal,
       });
 
-      const taskId = taskSpec.taskId || randomUUID();
+      const taskId = (taskSpec.taskId && /^[a-zA-Z0-9_-]{1,64}$/.test(taskSpec.taskId))
+        ? taskSpec.taskId
+        : randomUUID();
+      if (runningTasks.has(taskId)) {
+        throw new ApiError(ErrorCode.INVALID_REQUEST, `Task ID '${taskId}' already exists`, 409);
+      }
       const traceId = taskAgent.resetTraceId();
       const entry: TaskEntry = {
         taskAgent,
@@ -831,6 +850,7 @@ export function registerRoutes(
         traceId,
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        goal: taskSpec.goal,
         closeResources,
       };
 
@@ -911,6 +931,23 @@ export function registerRoutes(
   });
 
 
+  // List all tasks (summary)
+  app.get('/v1/tasks', async () => {
+    const tasks: any[] = [];
+    for (const [taskId, entry] of runningTasks) {
+      tasks.push({
+        taskId,
+        status: entry.status,
+        traceId: entry.traceId,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+        goal: entry.goal || '',
+      });
+    }
+    tasks.sort((a, b) => b.createdAt - a.createdAt);
+    return { tasks };
+  });
+
   app.get('/v1/tasks/:taskId', async (request) => {
     const { taskId } = request.params as any;
     const entry = runningTasks.get(taskId);
@@ -925,6 +962,7 @@ export function registerRoutes(
       traceId: entry.traceId,
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
+      goal: entry.goal,
       lastEvent,
       result: entry.result,
       error: entry.error,
@@ -971,6 +1009,46 @@ export function registerRoutes(
     request.raw.on('close', () => {
       entry.taskAgent.removeListener('event', onEvent);
     });
+  });
+
+  // ========== LLM Connection Test ==========
+
+  app.post('/v1/llm/test', async (request) => {
+    const { apiKey, baseURL, model } = request.body as any;
+    const testModel = model || 'gpt-4';
+    const testBaseURL = baseURL || 'https://api.openai.com/v1';
+    if (!apiKey) {
+      return { ok: false, error: 'API Key is required' };
+    }
+    // SSRF protection: only allow https URLs, block private/internal addresses
+    const urlCheck = validateUrl(testBaseURL, { blockPrivate: true });
+    if (!urlCheck.valid) {
+      return { ok: false, error: 'Invalid base URL: ' + urlCheck.reason };
+    }
+    const start = Date.now();
+    try {
+      const res = await fetch(testBaseURL.replace(/\/+$/, '') + '/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: testModel,
+          messages: [{ role: 'user', content: 'hi' }],
+          max_tokens: 1,
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      const latencyMs = Date.now() - start;
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        return { ok: false, error: `HTTP ${res.status}: ${body.slice(0, 200)}`, latencyMs };
+      }
+      return { ok: true, model: testModel, latencyMs };
+    } catch (err: any) {
+      return { ok: false, error: err.message, latencyMs: Date.now() - start };
+    }
   });
 
 }

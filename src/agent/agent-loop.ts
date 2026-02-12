@@ -6,66 +6,33 @@ import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { config } from './config.js';
 import { SYSTEM_PROMPT } from './prompt.js';
 import type { AgentState, AgentRunResult, AgentEvent, InputField } from './types.js';
-
-const MAX_CONTENT_LENGTH = 4000;
-
-function truncate(text: string, max = MAX_CONTENT_LENGTH): string {
-  if (text.length <= max) return text;
-  return text.slice(0, max) + `\n...(已截断，共${text.length}字符)`;
-}
-
-function formatForLLM(rawText: string, toolName: string): string {
-  try {
-    const data = JSON.parse(rawText);
-    if (toolName === 'get_page_info' && data?.elements) {
-      const summary: any = {
-        page: data.page,
-        elementCount: data.elements.length,
-        elements: data.elements.slice(0, 30).map((e: any) => ({
-          id: e.id,
-          type: e.type,
-          label: e.label,
-        })),
-        intents: data.intents,
-      };
-      if (data.stability) summary.stability = data.stability;
-      if (data.pendingDialog) summary.pendingDialog = data.pendingDialog;
-      if (data.elements.length > 30) {
-        summary.note = `显示前30个元素，共${data.elements.length}个`;
-      }
-      return truncate(JSON.stringify(summary, null, 2));
-    }
-    if (toolName === 'get_page_content') {
-      let md = `# ${data.title || ''}\n\n`;
-      const sections = Array.isArray(data.sections) ? data.sections : [];
-      for (const s of sections) {
-        const stars = s.attention >= 0.7 ? '★★★'
-                   : s.attention >= 0.4 ? '★★'
-                   : '★';
-        md += `[${stars}] ${s.text}\n\n`;
-      }
-      if (sections.length === 0) md += '(未提取到内容)\n';
-      return truncate(md);
-    }
-    return truncate(JSON.stringify(data));
-  } catch {
-    return truncate(rawText);
-  }
-}
+import { formatToolResult } from './content-budget.js';
+import { ToolUsageTracker } from './tool-usage-tracker.js';
+import { determineRecovery, extractErrorCode } from './error-recovery.js';
+import { ConversationManager } from './conversation-manager.js';
+import { TokenTracker } from './token-tracker.js';
+import { PageStateCache } from './page-state-cache.js';
+import { ProgressEstimator } from './progress-estimator.js';
+import type { SubGoal } from './types.js';
 
 export class BrowsingAgent extends EventEmitter {
   private openai: OpenAI;
   private mcpClient: Client;
   private state: AgentState;
-  private messages: ChatCompletionMessageParam[];
+  private conversation = new ConversationManager();
   private model: string;
   private maxIterations: number;
   private initialMessages: ChatCompletionMessageParam[];
   private tools: ChatCompletionTool[] = [];
-  private recentToolCalls: string[] = []; // 循环检测：记录最近工具调用签名
+  private toolTracker = new ToolUsageTracker();
+  private tokenTracker = new TokenTracker();
+  private pageStateCache = new PageStateCache();
+  private progressEstimator: ProgressEstimator;
+  private subGoals: SubGoal[] = [];
   private stepWarningInjected = false;
   private pendingInputResolve: ((response: Record<string, string>) => void) | null = null;
   private pendingInputRequestId: string | null = null;
+  private _askHumanTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(options: {
     apiKey?: string;
@@ -74,6 +41,7 @@ export class BrowsingAgent extends EventEmitter {
     mcpClient: Client;
     maxIterations?: number;
     initialMessages?: ChatCompletionMessageParam[];
+    subGoals?: string[];
   }) {
     super();
     this.model = options.model || config.llm.model;
@@ -84,13 +52,16 @@ export class BrowsingAgent extends EventEmitter {
     this.mcpClient = options.mcpClient;
     this.maxIterations = options.maxIterations ?? config.maxIterations;
     this.initialMessages = options.initialMessages || [];
+    this.progressEstimator = new ProgressEstimator(this.maxIterations);
+    if (options.subGoals?.length) {
+      this.subGoals = options.subGoals.map(d => ({ description: d, completed: false }));
+    }
     this.state = {
       sessionId: '',
       iteration: 0,
       consecutiveErrors: 0,
       done: false,
     };
-    this.messages = [];
   }
 
   get sessionId(): string {
@@ -102,9 +73,9 @@ export class BrowsingAgent extends EventEmitter {
       return false;
     }
     // Clear the timeout timer to prevent resource leak
-    if ((this as any)._askHumanTimer) {
-      clearTimeout((this as any)._askHumanTimer);
-      (this as any)._askHumanTimer = null;
+    if (this._askHumanTimer) {
+      clearTimeout(this._askHumanTimer);
+      this._askHumanTimer = null;
     }
     this.pendingInputResolve(response);
     this.pendingInputResolve = null;
@@ -184,7 +155,8 @@ export class BrowsingAgent extends EventEmitter {
     let sessionResult;
     try {
       sessionResult = await this.mcpClient.callTool({ name: 'create_session', arguments: {} });
-      const text = (sessionResult.content as any)[0]?.text;
+      const text = (sessionResult.content as any)?.[0]?.text;
+      if (!text) throw new Error('create_session returned no text content');
       const parsed = JSON.parse(text);
       this.state.sessionId = parsed.sessionId;
     } catch (err: any) {
@@ -196,11 +168,12 @@ export class BrowsingAgent extends EventEmitter {
     this.emitEvent({ type: 'session_created', sessionId: this.state.sessionId });
 
     // Build messages: system + initialMessages (conversation memory) + user task
-    this.messages = [
-      { role: 'system', content: SYSTEM_PROMPT },
-      ...this.initialMessages,
-      { role: 'user', content: task },
-    ];
+    let systemPrompt = SYSTEM_PROMPT;
+    if (this.subGoals.length > 0) {
+      const goalList = this.subGoals.map((g, i) => `${i + 1}. ${g.description}`).join('\n');
+      systemPrompt += `\n\n## 子目标\n\n按顺序完成以下子目标：\n${goalList}\n\n完成每个子目标后，在思考中标注"[子目标完成: N]"（N为序号）。`;
+    }
+    this.conversation.init(systemPrompt, this.initialMessages, task);
 
     let finalResult: AgentRunResult;
     try {
@@ -209,12 +182,16 @@ export class BrowsingAgent extends EventEmitter {
       finalResult = { success: false, error: err.message, iterations: this.state.iteration };
     }
 
+    // Attach token usage
+    finalResult.tokenUsage = this.tokenTracker.getUsage();
+
     this.emitEvent({
       type: 'done',
       success: finalResult.success,
       result: finalResult.result,
       error: finalResult.error,
       iterations: finalResult.iterations,
+      tokenUsage: finalResult.tokenUsage,
     });
 
     await this.cleanup();
@@ -230,9 +207,9 @@ export class BrowsingAgent extends EventEmitter {
       const remainingSteps = this.maxIterations - this.state.iteration;
       if (!this.stepWarningInjected && remainingSteps <= 2 && remainingSteps > 0 && this.maxIterations > 3) {
         this.stepWarningInjected = true;
-        this.messages.push({
-          role: 'system',
-          content: `⚠️ 你还剩 ${remainingSteps} 步就达到上限，请立即用 done 工具报告已获取的所有信息，不要再做额外操作。`,
+        this.conversation.push({
+          role: 'user',
+          content: `[系统提示] ⚠️ 你还剩 ${remainingSteps} 步就达到上限，请立即用 done 工具报告已获取的所有信息，不要再做额外操作。`,
         });
         console.log(`[Agent] 注入步数提醒，剩余 ${remainingSteps} 步`);
       }
@@ -241,18 +218,25 @@ export class BrowsingAgent extends EventEmitter {
       try {
         response = await this.openai.chat.completions.create({
           model: this.model,
-          messages: this.messages,
+          messages: this.conversation.getMessages(),
           tools: this.tools,
           tool_choice: 'auto',
         });
+        this.tokenTracker.recordLLMCall(response.usage as any);
       } catch (err: any) {
         this.state.consecutiveErrors++;
         console.log(`[Agent] LLM API 错误 (${this.state.consecutiveErrors}/${config.maxConsecutiveErrors}): ${err.message}`);
         this.emitEvent({ type: 'error', message: err.message, iteration: this.state.iteration });
-        if (this.state.consecutiveErrors >= config.maxConsecutiveErrors) {
+        const recovery = determineRecovery({
+          errorMessage: err.message,
+          toolName: '_llm_api',
+          consecutiveErrors: this.state.consecutiveErrors,
+        });
+        if (recovery.type === 'abort' || this.state.consecutiveErrors >= config.maxConsecutiveErrors) {
           return { success: false, error: `LLM API 连续失败: ${err.message}`, iterations: this.state.iteration };
         }
-        await new Promise(r => setTimeout(r, 2000));
+        const delay = recovery.type === 'retry' ? recovery.delayMs : 2000;
+        await new Promise(r => setTimeout(r, delay));
         continue;
       }
 
@@ -264,9 +248,19 @@ export class BrowsingAgent extends EventEmitter {
       if (message.content) {
         console.log(`[Agent] 思考: ${message.content}`);
         this.emitEvent({ type: 'thinking', content: message.content, iteration: this.state.iteration });
+
+        // Detect subgoal completion markers in thinking
+        const goalMatch = message.content.match(/\[子目标完成:\s*(\d+)\]/);
+        if (goalMatch) {
+          const idx = parseInt(goalMatch[1], 10) - 1;
+          if (idx >= 0 && idx < this.subGoals.length && !this.subGoals[idx].completed) {
+            this.subGoals[idx].completed = true;
+            this.emitEvent({ type: 'subgoal_completed', subGoal: this.subGoals[idx].description, iteration: this.state.iteration });
+          }
+        }
       }
 
-      this.messages.push(message);
+      this.conversation.push(message);
 
       if (!message.tool_calls || message.tool_calls.length === 0) {
         console.log('[Agent] LLM 未调用工具，任务结束');
@@ -290,6 +284,7 @@ export class BrowsingAgent extends EventEmitter {
   }
 
   private async executeToolCalls(toolCalls: Array<{ id: string; function: { name: string; arguments: string } }>): Promise<AgentRunResult | null> {
+    const deferredHints: string[] = [];
     for (const toolCall of toolCalls) {
       const name = toolCall.function.name;
       let args: Record<string, any>;
@@ -297,7 +292,7 @@ export class BrowsingAgent extends EventEmitter {
         args = JSON.parse(toolCall.function.arguments || '{}');
       } catch {
         console.log(`[Agent] 工具参数解析失败: ${toolCall.function.arguments}`);
-        this.messages.push({
+        this.conversation.push({
           role: 'tool',
           tool_call_id: toolCall.id,
           content: JSON.stringify({ error: '工具参数 JSON 解析失败' }),
@@ -308,25 +303,6 @@ export class BrowsingAgent extends EventEmitter {
 
       console.log(`[Agent] 调用工具: ${name}(${JSON.stringify(args)})`);
       this.emitEvent({ type: 'tool_call', name, args, iteration: this.state.iteration });
-
-      // 循环检测：记录工具调用签名
-      const callSig = `${name}:${JSON.stringify(args)}`;
-      this.recentToolCalls.push(callSig);
-      if (this.recentToolCalls.length > 3) {
-        this.recentToolCalls.shift();
-      }
-      if (
-        this.recentToolCalls.length === 3 &&
-        this.recentToolCalls[0] === this.recentToolCalls[1] &&
-        this.recentToolCalls[1] === this.recentToolCalls[2]
-      ) {
-        console.log('[Agent] 检测到循环调用，注入提醒');
-        this.messages.push({
-          role: 'system',
-          content: '⚠️ 你已连续3次调用相同工具且参数相同，这不会产生新结果。请换一种方式操作，或用 done 工具报告当前已获取的信息。',
-        });
-        this.recentToolCalls = [];
-      }
 
       if (name === 'done') {
         const result = args.result || '任务完成';
@@ -357,7 +333,7 @@ export class BrowsingAgent extends EventEmitter {
               }
             }, 5 * 60 * 1000);
             // Store timer ref so resolveInput can clear it
-            (this as any)._askHumanTimer = timer;
+            this._askHumanTimer = timer;
           });
         } catch {
           userResponse = { error: '用户未在规定时间内响应' };
@@ -373,7 +349,7 @@ export class BrowsingAgent extends EventEmitter {
 
         console.log(`[Agent] 用户输入已收到`);
         this.emitEvent({ type: 'tool_result', name: 'ask_human', success: true, summary: redactedText, iteration: this.state.iteration });
-        this.messages.push({ role: 'tool', tool_call_id: toolCall.id, content: responseText });
+        this.conversation.push({ role: 'tool', tool_call_id: toolCall.id, content: responseText });
         continue;
       }
 
@@ -395,23 +371,95 @@ export class BrowsingAgent extends EventEmitter {
         success = false;
       }
 
+      // Record in tracker
+      this.toolTracker.record({
+        toolName: name,
+        args,
+        success,
+        timestamp: Date.now(),
+        errorCode: success ? undefined : extractErrorCode(rawText),
+      });
+
       if (!success) {
         this.state.consecutiveErrors++;
         console.log(`[Agent] 错误 (${this.state.consecutiveErrors}/${config.maxConsecutiveErrors}): ${rawText}`);
+        const errorCode = extractErrorCode(rawText);
+        const recovery = determineRecovery({
+          errorCode,
+          errorMessage: rawText,
+          toolName: name,
+          consecutiveErrors: this.state.consecutiveErrors,
+        });
+
+        if (recovery.type === 'abort') {
+          this.conversation.push({ role: 'tool', tool_call_id: toolCall.id, content: rawText });
+          return { success: false, error: recovery.reason, iterations: this.state.iteration };
+        }
+
         if (this.state.consecutiveErrors >= config.maxConsecutiveErrors) {
-          this.messages.push({ role: 'tool', tool_call_id: toolCall.id, content: rawText });
+          this.conversation.push({ role: 'tool', tool_call_id: toolCall.id, content: rawText });
           return {
             success: false,
             error: `连续 ${config.maxConsecutiveErrors} 次错误，任务中止`,
             iterations: this.state.iteration,
           };
         }
+
+        if (recovery.type === 'inject_hint') {
+          this.conversation.push({ role: 'tool', tool_call_id: toolCall.id, content: rawText });
+          deferredHints.push(`[系统提示] ⚠️ ${recovery.message}`);
+          continue;
+        }
       } else {
         this.state.consecutiveErrors = 0;
       }
 
-      // SSE event sends full content; LLM message gets truncated version
-      const formatted = formatForLLM(rawText, name);
+      // Loop/pattern detection — defer hint to avoid interleaving with tool results
+      const loopDetection = this.toolTracker.detectAny();
+      if (loopDetection) {
+        console.log(`[Agent] 检测到${loopDetection.type}，注入提醒`);
+        deferredHints.push(`[系统提示] ⚠️ ${loopDetection.message}`);
+      }
+
+      // SSE event sends full content; LLM message gets budget-aware version
+      let formatted = formatToolResult(rawText, name);
+
+      // Apply page state diff for get_page_info on same-page refreshes
+      if (name === 'get_page_info' && success) {
+        try {
+          const pageData = JSON.parse(rawText);
+          const elements = Array.isArray(pageData.elements) ? pageData.elements : [];
+          const url = pageData.page?.url || '';
+          const diff = this.pageStateCache.update(this.state.sessionId, elements, url);
+          if (!diff.isNewPage && (diff.added.length + diff.removed.length + diff.changed.length) > 0) {
+            const diffLines = [
+              `## Page State Diff (unchanged: ${diff.unchangedCount})`,
+              '',
+            ];
+            if (diff.added.length > 0) {
+              diffLines.push(`### Added (${diff.added.length})`);
+              for (const el of diff.added.slice(0, 20)) {
+                diffLines.push(`- \`${el.id}\` ${el.type || ''} ${el.label || ''}`);
+              }
+            }
+            if (diff.removed.length > 0) {
+              diffLines.push(`### Removed (${diff.removed.length})`);
+              for (const id of diff.removed.slice(0, 20)) {
+                diffLines.push(`- \`${id}\``);
+              }
+            }
+            if (diff.changed.length > 0) {
+              diffLines.push(`### Changed (${diff.changed.length})`);
+              for (const el of diff.changed.slice(0, 20)) {
+                diffLines.push(`- \`${el.id}\` ${el.type || ''} ${el.label || ''}`);
+              }
+            }
+            formatted = diffLines.join('\n');
+          }
+        } catch {
+          // Parse failed — use the standard formatted output
+        }
+      }
       console.log(`[Agent] 结果: ${formatted.slice(0, 200)}${formatted.length > 200 ? '...' : ''}`);
       this.emitEvent({
         type: 'tool_result',
@@ -421,16 +469,30 @@ export class BrowsingAgent extends EventEmitter {
         iteration: this.state.iteration,
       });
 
-      this.messages.push({
+      this.conversation.push({
         role: 'tool',
         tool_call_id: toolCall.id,
         content: formatted,
       });
+
+      // Emit progress after each tool call
+      const progress = this.progressEstimator.record(name);
+      this.emitEvent({ type: 'progress', progress, iteration: this.state.iteration });
     }
+
+    // Push all deferred hints after tool results to avoid breaking tool message contiguity
+    for (const hint of deferredHints) {
+      this.conversation.push({ role: 'user', content: hint });
+    }
+
     return null;
   }
 
   async cleanup(): Promise<void> {
+    if (this._askHumanTimer) {
+      clearTimeout(this._askHumanTimer);
+      this._askHumanTimer = null;
+    }
     if (this.state.sessionId) {
       console.log('[Agent] 清理浏览器会话...');
       try {

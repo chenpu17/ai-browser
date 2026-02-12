@@ -8,8 +8,8 @@ This is an AI-friendly browser automation service that provides semantic web pag
 
 - **CLI Layer** (`src/cli/`): Entry points — HTTP server (`ai-browser`) and stdio MCP (`ai-browser-mcp`)
 - **API Layer** (`src/api/`): Fastify HTTP server with REST API and SSE MCP endpoint
-- **MCP Layer** (`src/mcp/`): Browser tools exposed via MCP protocol (35 tools: 28 browser primitives + 7 task-runtime tools — navigate, click, type, screenshot, template run/query, artifact retrieval, etc.)
-- **Agent Layer** (`src/agent/`): LLM-driven autonomous browsing agent with tool calling
+- **MCP Layer** (`src/mcp/`): Browser tools exposed via MCP protocol (38 tools: 28 browser primitives + 3 composite tools + 7 task-runtime tools — navigate, click, type, screenshot, fill_form, click_and_wait, navigate_and_extract, template run/query, artifact retrieval, etc.)
+- **Agent Layer** (`src/agent/`): LLM-driven autonomous browsing agent with tool calling, conversation memory management, progress estimation, error recovery, loop detection, and token tracking
 - **Semantic Layer** (`src/semantic/`): Accessibility tree analysis, content extraction, element matching
 - **Browser Layer** (`src/browser/`): Puppeteer-based browser management with multi-tab sessions, cookie store
 
@@ -87,6 +87,20 @@ npm test         # Run tests
 | `get_console_logs` | Get console logs (filter by level) |
 | `upload_file` | Upload a file to a file input element |
 | `get_downloads` | Get downloaded files list |
+
+## Data Flow & Consumer Contract
+
+MCP tool responses flow through two parallel consumer paths:
+
+1. **LLM path**: `agent-loop.ts` → `content-budget.ts` (`formatToolResult`) → conversation messages
+2. **Web UI path**: `agent-loop.ts` → SSE `tool_result` event (`summary: rawText`) → `public/index.html`
+
+Both paths receive the full MCP JSON (including `aiMarkdown`, `aiSummary`, `aiHints`, etc.). When MCP output format changes (e.g., new AI-optimized fields), **all downstream consumers must be updated**:
+
+- `src/agent/content-budget.ts` — LLM consumption
+- `public/index.html` (`formatMdResult`) — Web UI rendering
+
+Priority for displaying tool results: `aiMarkdown` > `aiSummary` > manual formatting > raw JSON.
 
 ## Code Style
 
