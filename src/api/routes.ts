@@ -12,6 +12,7 @@ import {
   ElementMatcher,
 } from '../semantic/index.js';
 import { ApiError, ErrorCode } from './errors.js';
+import { safePageTitle } from '../utils/safe-page.js';
 import { BrowsingAgent } from '../agent/agent-loop.js';
 import { TaskAgent, type TaskSpec } from '../agent/task-agent.js';
 import { createBrowserMcpServer } from '../mcp/browser-mcp-server.js';
@@ -256,7 +257,7 @@ export function registerRoutes(
     return {
       tabId: tab.id,
       url: tab.url,
-      title: await tab.page.title(),
+      title: await safePageTitle(tab.page),
     };
   });
 
@@ -272,7 +273,7 @@ export function registerRoutes(
     const tabInfos = await Promise.all(tabs.map(async t => ({
       id: t.id,
       url: t.page.url(),
-      title: await t.page.title(),
+      title: await safePageTitle(t.page),
       isActive: t.id === session.activeTabId,
     })));
 
@@ -341,7 +342,7 @@ export function registerRoutes(
       tabId: tab.id,
       page: {
         url: tab.page.url(),
-        title: await tab.page.title(),
+        title: await safePageTitle(tab.page),
       },
     };
   });
@@ -374,7 +375,7 @@ export function registerRoutes(
       tabId: tab.id,
       page: {
         url: tab.page.url(),
-        title: await tab.page.title(),
+        title: await safePageTitle(tab.page),
         type: analysis.pageType,
         summary: analysis.summary,
       },
@@ -415,7 +416,7 @@ export function registerRoutes(
         tabId: tab.id,
         page: {
           url: tab.page.url(),
-          title: await tab.page.title(),
+          title: await safePageTitle(tab.page),
         },
       };
     } catch (err: any) {
@@ -472,7 +473,7 @@ export function registerRoutes(
       tabId: tab.id,
       page: {
         url: tab.page.url(),
-        title: await tab.page.title(),
+        title: await safePageTitle(tab.page),
       },
     };
   });
@@ -582,7 +583,7 @@ export function registerRoutes(
         return {
           tabId: tab.id,
           url: tab.page.url(),
-          title: await tab.page.title(),
+          title: await safePageTitle(tab.page),
           content,
           elementCount: elements.length,
           success: true,

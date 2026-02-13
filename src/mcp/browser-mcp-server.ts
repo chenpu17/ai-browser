@@ -6,6 +6,7 @@ import { SessionManager } from '../browser/index.js';
 import { CookieStore } from '../browser/CookieStore.js';
 import { executeAction, escapeCSS, setValueByAccessibility } from '../browser/actions.js';
 import { validateUrl, validateUrlAsync, type ValidateUrlOptions } from '../utils/url-validator.js';
+import { safePageTitle } from '../utils/safe-page.js';
 import {
   ElementCollector,
   PageAnalyzer,
@@ -401,7 +402,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       sessionManager.updateActivity(sessionId);
       const result: any = {
         success: true,
-        page: { url: tab.page.url(), title: await tab.page.title() },
+        page: { url: tab.page.url(), title: await safePageTitle(tab.page) },
       };
       if (newTabCreated) result.newTabCreated = newTabCreated;
       if (tab.events) {
@@ -436,7 +437,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       sessionManager.updateActivity(sessionId);
       return textResult({
         success: true,
-        page: { url: tab.page.url(), title: await tab.page.title() },
+        page: { url: tab.page.url(), title: await safePageTitle(tab.page) },
       }, 'type_text');
     })
   );
@@ -539,7 +540,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
         sessionManager.updateActivity(sessionId);
         return textResult({
           success: true,
-          page: { url: tab.page.url(), title: await tab.page.title() },
+          page: { url: tab.page.url(), title: await safePageTitle(tab.page) },
         }, 'press_key');
       }
       // Single key mode (original logic)
@@ -553,7 +554,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       sessionManager.updateActivity(sessionId);
       return textResult({
         success: true,
-        page: { url: tab.page.url(), title: await tab.page.title() },
+        page: { url: tab.page.url(), title: await safePageTitle(tab.page) },
       }, 'press_key');
     })
   );
@@ -573,7 +574,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       sessionManager.updateActivity(sessionId);
       return textResult({
         success: true,
-        page: { url: tab.page.url(), title: await tab.page.title() },
+        page: { url: tab.page.url(), title: await safePageTitle(tab.page) },
       }, 'go_back');
     })
   );
@@ -754,7 +755,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       if (!tab) throw new Error(`Active tab not available after switch: ${tabId}`);
       return textResult({
         success: true,
-        page: { url: tab.page.url(), title: await tab.page.title() },
+        page: { url: tab.page.url(), title: await safePageTitle(tab.page) },
       }, 'switch_tab');
     })
   );
@@ -789,7 +790,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       sessionManager.updateActivity(sessionId);
       const tabItems = await Promise.all(tabs.map(async (t) => {
         let title = '';
-        try { title = await t.page.title(); } catch {}
+        title = await safePageTitle(t.page);
         return { id: t.id, url: t.page.url(), title };
       }));
       return textResult({
@@ -850,7 +851,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
 
       sessionManager.updateActivity(sessionId);
       const pageUrl = tab.page.url();
-      const pageTitle = await tab.page.title().catch(() => '');
+      const pageTitle = await safePageTitle(tab.page);
       const screenshotMeta = enrichWithAiMarkdown('screenshot', {
         captured: true,
         url: pageUrl,
@@ -1210,7 +1211,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       return textResult({
         fieldResults: results,
         submitResult,
-        page: { url: tab.page.url(), title: await tab.page.title() },
+        page: { url: tab.page.url(), title: await safePageTitle(tab.page) },
       }, 'fill_form');
     })
   );
@@ -1273,7 +1274,7 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       const result: any = {
         success: true,
         waitResult,
-        page: { url: tab.page.url(), title: await tab.page.title() },
+        page: { url: tab.page.url(), title: await safePageTitle(tab.page) },
       };
       if (newTabCreated) result.newTabCreated = newTabCreated;
       if (tab.events) {

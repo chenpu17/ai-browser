@@ -1,5 +1,6 @@
 import { Page } from 'puppeteer-core';
 import { PageType, Intent } from '../types/index.js';
+import { safePageTitle } from '../utils/safe-page.js';
 
 interface PageSignals {
   url: string;
@@ -30,7 +31,7 @@ export class PageAnalyzer {
 
   private async collectSignals(page: Page): Promise<PageSignals> {
     const url = page.url();
-    const title = await page.title();
+    const title = await safePageTitle(page);
 
     const counts = await page.evaluate(() => {
       return {

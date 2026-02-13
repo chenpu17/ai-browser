@@ -1,5 +1,6 @@
 import type { ToolContext } from './tool-context.js';
 import { validateUrlAsync } from '../utils/url-validator.js';
+import { safePageTitle } from '../utils/safe-page.js';
 import {
   ElementCollector,
   ElementMatcher,
@@ -203,8 +204,7 @@ export async function navigate(
   await ctx.saveCookies(tab.page);
   ctx.sessionManager.updateActivity(sessionId);
 
-  let title = '';
-  try { title = await tab.page.title(); } catch { title = '(无法获取标题)'; }
+  let title = await safePageTitle(tab.page);
 
   const result: NavigateResult = { success: true, partial, statusCode, page: { url: tab.page.url(), title } };
   if (tab.events) {
@@ -293,7 +293,7 @@ export async function getPageInfo(
   const result: PageInfoResult = {
     page: {
       url: tab.page.url(),
-      title: await tab.page.title(),
+      title: await safePageTitle(tab.page),
       type: analysis.pageType,
       summary: analysis.summary,
     },
@@ -453,7 +453,7 @@ export async function click(
   ctx.sessionManager.updateActivity(sessionId);
   const result: ClickResult = {
     success: true,
-    page: { url: tab.page.url(), title: await tab.page.title() },
+    page: { url: tab.page.url(), title: await safePageTitle(tab.page) },
   };
   if (newTabCreated) result.newTabCreated = newTabCreated;
   if (tab.events) {
@@ -486,7 +486,7 @@ export async function typeText(
   ctx.sessionManager.updateActivity(sessionId);
   return {
     success: true,
-    page: { url: tab.page.url(), title: await tab.page.title() },
+    page: { url: tab.page.url(), title: await safePageTitle(tab.page) },
   };
 }
 
@@ -565,7 +565,7 @@ export async function pressKey(
   ctx.sessionManager.updateActivity(sessionId);
   return {
     success: true,
-    page: { url: tab.page.url(), title: await tab.page.title() },
+    page: { url: tab.page.url(), title: await safePageTitle(tab.page) },
   };
 }
 

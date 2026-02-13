@@ -1,6 +1,7 @@
 import type { ToolContext } from '../tool-context.js';
 import type { CancelToken } from '../cancel-token.js';
 import * as actions from '../tool-actions.js';
+import { safePageTitle } from '../../utils/safe-page.js';
 import { ErrorCode } from '../error-codes.js';
 
 // ===== Input / Output types =====
@@ -252,9 +253,7 @@ export async function executeLoginKeepSession(
 
   const finalUrl = tab?.page.url() ?? '';
   let title = '';
-  try {
-    title = tab ? await tab.page.title() : '';
-  } catch {}
+  title = tab ? await safePageTitle(tab.page) : '';
 
   if (!indicatorMatched) {
     return {
