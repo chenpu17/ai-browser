@@ -1,6 +1,6 @@
 {
   "name": "ai-browser",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "type": "module",
   "description": "AI-friendly browser with semantic output",
   "main": "dist/index.js",
