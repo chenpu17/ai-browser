@@ -145,8 +145,9 @@ import {
 
 ## MCP Tools
 
-The server currently exposes **35 MCP tools**:
+The server currently exposes **38 MCP tools**:
 - **28 browser primitive tools** (navigation, interaction, tabs, logs, uploads, etc.)
+- **3 composite tools** (multi-step operations in one call)
 - **7 task-runtime tools** (template execution, run tracking, artifacts)
 
 Most browser tools accept an optional `sessionId` — omitting it auto-creates/reuses a default session.
@@ -235,6 +236,14 @@ Optional adaptive policy (prototype): `AI_MARKDOWN_ADAPTIVE_POLICY=1`
 |------|-------------|
 | `upload_file` | Upload a file to a file input element (**local mode only**) |
 | `get_downloads` | Get downloaded files list |
+
+### Composite Tools (Multi-Step Operations)
+
+| Tool | Description |
+|------|-------------|
+| `fill_form` | Fill multiple form fields and optionally submit in one call (`fields: [{ element_id, value }]`, optional `submit`) |
+| `click_and_wait` | Click an element then wait for stable/navigation/selector (`element_id` + `waitFor: 'stable'\|'navigation'\|'selector'`) |
+| `navigate_and_extract` | Navigate to URL and extract content in one call (`url` + `extract: 'content'\|'elements'\|'both'`) |
 
 ### Task Runtime (Non-LLM Templates)
 

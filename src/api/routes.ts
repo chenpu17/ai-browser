@@ -16,6 +16,11 @@ import { BrowsingAgent } from '../agent/agent-loop.js';
 import { TaskAgent, type TaskSpec } from '../agent/task-agent.js';
 import { createBrowserMcpServer } from '../mcp/browser-mcp-server.js';
 import { CookieStore } from '../browser/CookieStore.js';
+import { KnowledgeCardStore, mergePatterns } from '../memory/index.js';
+import { SessionRecorder } from '../memory/SessionRecorder.js';
+import { RecordingConverter } from '../memory/RecordingConverter.js';
+import type { KnowledgeCard, SitePattern } from '../memory/types.js';
+import { config } from '../agent/config.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
@@ -24,7 +29,8 @@ const MAX_BATCH_ACTIONS = 50;
 export function registerRoutes(
   app: FastifyInstance,
   sessionManager: SessionManager,
-  cookieStore: CookieStore
+  cookieStore: CookieStore,
+  knowledgeStore: KnowledgeCardStore
 ) {
   const elementCollector = new ElementCollector();
   const pageAnalyzer = new PageAnalyzer();
@@ -33,13 +39,16 @@ export function registerRoutes(
   const iframeHandler = new IframeHandler();
   const elementMatcher = new ElementMatcher();
 
+  // Session recorders — declared early so session close can clean up
+  const recorders = new Map<string, SessionRecorder>();
+
   // 健康检查
   app.get('/health', async () => {
     return { status: 'healthy', version: '0.1.0' };
   });
 
   // 内存使用情况（用于测试监控）
-  app.get('/v1/memory', async () => {
+  app.get('/v1/debug/memory', async () => {
     const mem = process.memoryUsage();
     return {
       rss: mem.rss,
@@ -48,6 +57,108 @@ export function registerRoutes(
       external: mem.external,
       arrayBuffers: mem.arrayBuffers,
     };
+  });
+
+  // ========== 站点记忆 API ==========
+
+  // 列出所有域名索引
+  app.get('/v1/memory', async () => {
+    return { entries: knowledgeStore.listDomains() };
+  });
+
+  // 获取完整知识卡片
+  app.get('/v1/memory/:domain', async (request) => {
+    const { domain } = request.params as any;
+    const card = knowledgeStore.loadCard(domain);
+    if (!card) {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, 'Domain not found', 404);
+    }
+    return card;
+  });
+
+  // 手动添加/更新模式
+  app.put('/v1/memory/:domain', async (request) => {
+    const { domain } = request.params as any;
+    const body = request.body as any;
+    const patterns: SitePattern[] = body.patterns || [];
+
+    if (!Array.isArray(patterns) || patterns.length === 0) {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, 'patterns array is required', 400);
+    }
+
+    const validTypes = ['selector', 'navigation_path', 'login_required', 'spa_hint', 'page_structure', 'task_intent'];
+    for (const p of patterns) {
+      if (!p || typeof p !== 'object') {
+        throw new ApiError(ErrorCode.INVALID_REQUEST, 'Each pattern must be an object', 400);
+      }
+      if (!validTypes.includes(p.type)) {
+        throw new ApiError(ErrorCode.INVALID_REQUEST, `Invalid pattern type: ${p.type}. Must be one of: ${validTypes.join(', ')}`, 400);
+      }
+      if (!p.description || typeof p.description !== 'string') {
+        throw new ApiError(ErrorCode.INVALID_REQUEST, 'Each pattern must have a description string', 400);
+      }
+      if (!p.value || typeof p.value !== 'string') {
+        throw new ApiError(ErrorCode.INVALID_REQUEST, 'Each pattern must have a value string', 400);
+      }
+      if (p.value.length > 2000) {
+        throw new ApiError(ErrorCode.INVALID_REQUEST, 'Pattern value too long (max 2000 chars)', 400);
+      }
+    }
+
+    const existing = knowledgeStore.loadCard(domain);
+    const now = Date.now();
+    // Mark manual patterns
+    for (const p of patterns) {
+      p.source = p.source || 'manual';
+      p.createdAt = p.createdAt || now;
+      p.lastUsedAt = p.lastUsedAt || now;
+      p.useCount = p.useCount || 0;
+      p.confidence = p.confidence ?? 0.8;
+    }
+
+    const card: KnowledgeCard = existing
+      ? { ...existing, patterns: mergePatterns(existing.patterns, patterns), version: existing.version + 1, updatedAt: now }
+      : { domain, version: 1, patterns, siteType: body.siteType, requiresLogin: body.requiresLogin, createdAt: now, updatedAt: now };
+
+    knowledgeStore.saveCard(card);
+    return { success: true, domain, patternCount: card.patterns.length };
+  });
+
+  // 清除域名记忆
+  app.delete('/v1/memory/:domain', async (request) => {
+    const { domain } = request.params as any;
+    const cleared = knowledgeStore.clearDomain(domain);
+    if (!cleared) {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, 'Domain not found', 404);
+    }
+    return { success: true };
+  });
+
+  // 列出归档版本
+  app.get('/v1/memory/:domain/archive', async (request) => {
+    const { domain } = request.params as any;
+    const archives = knowledgeStore.listArchives(domain);
+    return { domain, archives };
+  });
+
+  // 获取归档版本详情
+  app.get('/v1/memory/:domain/archive/:filename', async (request) => {
+    const { domain, filename } = request.params as any;
+    const card = knowledgeStore.loadArchive(domain, filename);
+    if (!card) {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, 'Archive not found', 404);
+    }
+    return card;
+  });
+
+  // 从归档恢复
+  app.post('/v1/memory/:domain/restore/:filename', async (request) => {
+    const { domain, filename } = request.params as any;
+    const restored = knowledgeStore.restoreArchive(domain, filename);
+    if (!restored) {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, 'Archive not found', 404);
+    }
+    return { success: true, domain };
   });
 
   // 服务信息
@@ -90,6 +201,12 @@ export function registerRoutes(
   // 关闭会话
   app.delete('/v1/sessions/:sessionId', async (request) => {
     const { sessionId } = request.params as any;
+    // Clean up any active recorder for this session
+    const recorder = recorders.get(sessionId);
+    if (recorder?.isRecording()) {
+      recorder.stopRecording();
+    }
+    recorders.delete(sessionId);
     const closed = await sessionManager.close(sessionId);
     if (!closed) {
       throw new ApiError(ErrorCode.SESSION_NOT_FOUND, 'Session not found', 404);
@@ -528,11 +645,16 @@ export function registerRoutes(
     }
 
     try {
-      const base64 = await tab.page.screenshot({ type: 'png', encoding: 'base64' }) as string;
+      // Timeout to prevent hanging when page is closed (e.g., headful browser closed by user)
+      const screenshotPromise = tab.page.screenshot({ type: 'png', encoding: 'base64' }) as Promise<string>;
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Screenshot timeout')), 8000)
+      );
+      const base64 = await Promise.race([screenshotPromise, timeoutPromise]);
       return { image: `data:image/png;base64,${base64}` };
     } catch (err: any) {
       const msg = err.message || '';
-      if (msg.includes('Target closed') || msg.includes('detached') || msg.includes('crashed')) {
+      if (msg.includes('Target closed') || msg.includes('detached') || msg.includes('crashed') || msg.includes('timeout')) {
         throw new ApiError(ErrorCode.INTERNAL_ERROR, 'Page is no longer available', 410);
       }
       throw err;
@@ -554,7 +676,13 @@ export function registerRoutes(
   const runningAgents = new Map<string, AgentEntry>();
 
   app.post('/v1/agent/run', async (request) => {
-    const { task, apiKey, baseURL, model, messages, maxIterations, headless } = request.body as any;
+    const body = request.body as any;
+    const { task, messages, maxIterations, headless, timeout } = body;
+    // Support both flat fields (apiKey, baseURL, model) and nested llm object
+    const llm = body.llm || {};
+    const apiKey = body.apiKey || llm.apiKey;
+    const baseURL = body.baseURL || llm.baseURL;
+    const model = body.model || llm.model;
 
     if (!task || typeof task !== 'string') {
       throw new ApiError(ErrorCode.INVALID_REQUEST, 'task is required', 400);
@@ -584,6 +712,7 @@ export function registerRoutes(
     const mcpServer = createBrowserMcpServer(sessionManager, cookieStore, {
       ...mcpHeadless,
       trustLevel: 'local',
+      knowledgeStore,
     });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await mcpServer.connect(serverTransport);
@@ -596,7 +725,9 @@ export function registerRoutes(
       model: model || undefined,
       mcpClient,
       maxIterations: maxIterations || undefined,
+      timeout: timeout || undefined,
       initialMessages: messages || undefined,
+      knowledgeStore,
     });
     const agentId = randomUUID();
     const entry: AgentEntry = { agent, buffer: [], finished: false };
@@ -744,6 +875,7 @@ export function registerRoutes(
   }
 
   app.post('/v1/tasks', async (request) => {
+    const body = request.body as any;
     const {
       taskSpec: rawTaskSpec,
       goal,
@@ -751,13 +883,15 @@ export function registerRoutes(
       constraints,
       budget,
       outputSchema,
-      apiKey,
-      baseURL,
-      model,
       messages,
       maxIterations,
       headless,
-    } = request.body as any;
+    } = body;
+    // Support both flat fields (apiKey, baseURL, model) and nested llm object
+    const llm = body.llm || {};
+    const apiKey = body.apiKey || llm.apiKey;
+    const baseURL = body.baseURL || llm.baseURL;
+    const model = body.model || llm.model;
 
     const taskSpec: TaskSpec = rawTaskSpec && typeof rawTaskSpec === 'object'
       ? rawTaskSpec
@@ -792,6 +926,7 @@ export function registerRoutes(
       mcpServer = createBrowserMcpServer(sessionManager, cookieStore, {
         ...mcpHeadless,
         trustLevel: 'local',
+        knowledgeStore,
       });
       const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
       await mcpServer.connect(serverTransport);
@@ -807,6 +942,7 @@ export function registerRoutes(
           mcpClient: mcpClient!,
           maxIterations: maxIterations || undefined,
           initialMessages: messages || undefined,
+          knowledgeStore,
         });
 
         const forwardEvent = (event: any) => {
@@ -1011,10 +1147,173 @@ export function registerRoutes(
     });
   });
 
+  // ========== Session Recording API (Phase B) ==========
+
+  // Start recording
+  app.post('/v1/sessions/:sessionId/recording/start', async (request) => {
+    const { sessionId } = request.params as any;
+    const session = sessionManager.get(sessionId);
+    if (!session) {
+      throw new ApiError(ErrorCode.SESSION_NOT_FOUND, 'Session not found', 404);
+    }
+    if (recorders.has(sessionId)) {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, 'Already recording', 400);
+    }
+    const tab = sessionManager.getActiveTab(sessionId);
+    if (!tab) {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, 'No active tab', 400);
+    }
+    const recorder = new SessionRecorder(sessionId);
+    const recordingId = randomUUID();
+    await recorder.startRecording(tab.page, recordingId);
+    recorders.set(sessionId, recorder);
+    return { success: true, recordingId };
+  });
+
+  // Stop recording
+  app.post('/v1/sessions/:sessionId/recording/stop', async (request) => {
+    const { sessionId } = request.params as any;
+    const { convertToMemory } = (request.body as any) || {};
+    const recorder = recorders.get(sessionId);
+    if (!recorder || !recorder.isRecording()) {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, 'Not recording', 400);
+    }
+    const recording = recorder.stopRecording();
+    recorders.delete(sessionId);
+    if (!recording) {
+      return { success: true, events: 0 };
+    }
+
+    let savedDomain: string | undefined;
+    if (convertToMemory && recording.events.length > 0) {
+      const domain = RecordingConverter.extractDomain(recording);
+      if (domain) {
+        const patterns = RecordingConverter.convert(recording);
+        if (patterns.length > 0) {
+          const existing = knowledgeStore.loadCard(domain);
+          const now = Date.now();
+          const card: KnowledgeCard = existing
+            ? { ...existing, patterns: mergePatterns(existing.patterns, patterns), version: existing.version + 1, updatedAt: now }
+            : { domain, version: 1, patterns, createdAt: now, updatedAt: now };
+          knowledgeStore.saveCard(card);
+          savedDomain = domain;
+        }
+      }
+    }
+
+    return {
+      success: true,
+      events: recording.events.length,
+      domain: recording.domain,
+      savedToMemory: savedDomain || null,
+      recording,
+    };
+  });
+
+  // Get recording status
+  app.get('/v1/sessions/:sessionId/recording', async (request) => {
+    const { sessionId } = request.params as any;
+    const recorder = recorders.get(sessionId);
+    if (!recorder) {
+      return { recording: false, eventCount: 0, domain: '' };
+    }
+    return recorder.getStatus();
+  });
+
+  // Summarize recording events into task intent via LLM
+  app.post('/v1/recordings/summarize', async (request) => {
+    const body = request.body as any;
+    const events = body.events;
+    const domain = body.domain || '';
+
+    // Support per-request LLM config (same pattern as /v1/agent/run)
+    const llm = body.llm || {};
+    const apiKey = body.apiKey || llm.apiKey || config.llm.apiKey;
+    const baseURL = body.baseURL || llm.baseURL || config.llm.baseURL || 'https://api.openai.com/v1';
+    const model = body.model || llm.model || config.llm.model || 'gpt-4o-mini';
+    const timeoutMs = Math.min(Math.max((body.timeout || 300) * 1000, 10000), 600000); // 10s–600s, default 300s
+
+    if (!Array.isArray(events) || events.length === 0) {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, 'events array is required', 400);
+    }
+    if (events.length > 500) {
+      throw new ApiError(ErrorCode.INVALID_REQUEST, 'Too many events (max 500)', 400);
+    }
+
+    if (!apiKey) {
+      return { intent: '', error: 'LLM not configured — set API Key in Settings' };
+    }
+
+    // Build a compact event summary for the prompt (limit to avoid token explosion)
+    const maxPromptEvents = 100;
+    const eventLines = events.slice(0, maxPromptEvents).map((e: any) => {
+      const parts = [e.type];
+      if (e.type === 'navigate') parts.push(e.url || '');
+      else if (e.type === 'click') parts.push(e.targetLabel || e.target || '');
+      else if (e.type === 'type') parts.push(`${e.targetLabel || e.target || ''} = "${(e.value || '').slice(0, 50)}"`);
+      else if (e.type === 'select') parts.push(`${e.targetLabel || e.target || ''} = "${e.value || ''}"`);
+      else if (e.type === 'scroll') parts.push(`y=${e.value || ''}`);
+      return parts.join(': ');
+    }).join('\n');
+    const truncNote = events.length > maxPromptEvents ? `\n(... 还有 ${events.length - maxPromptEvents} 个事件未显示)` : '';
+
+    const prompt = `你是一个浏览器自动化专家。以下是用户在 ${domain || '某网站'} 上的操作录制事件序列。
+
+你的任务是提取**可复用的操作流程**，而不是关注具体的内容。
+- 重点描述"怎么操作这个网站"，而不是"操作了什么具体内容"
+- 将具体的搜索词、文本、URL 等替换为通用占位符（如 <关键词>、<目标内容>）
+- 输出应该像一份操作手册，让 AI agent 下次能复用同样的流程
+
+格式要求：
+意图：<一句话描述这是什么类型的操作流程，例如"在Bing上搜索关键词并查看结果">
+步骤：
+1. <步骤1，用占位符替代具体值>
+2. <步骤2>
+...
+
+事件序列：
+${eventLines}${truncNote}`;
+
+    const llmUrl = baseURL.replace(/\/+$/, '') + '/chat/completions';
+
+    try {
+      const res = await fetch(llmUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 500,
+          temperature: 0.3,
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        return { intent: '', error: `LLM HTTP ${res.status}: ${text.slice(0, 200)}` };
+      }
+
+      const data = await res.json() as any;
+      const content = data.choices?.[0]?.message?.content || '';
+      return { intent: content.trim() };
+    } catch (err: any) {
+      const timeoutHint = err.message?.includes('timeout') ? ` (timeout=${timeoutMs / 1000}s, adjust in Settings)` : '';
+      return { intent: '', error: `LLM call failed (${llmUrl}): ${err.message}${timeoutHint}` };
+    }
+  });
+
   // ========== LLM Connection Test ==========
 
   app.post('/v1/llm/test', async (request) => {
-    const { apiKey, baseURL, model } = request.body as any;
+    const body = request.body as any;
+    const llmCfg = body.llm || {};
+    const apiKey = body.apiKey || llmCfg.apiKey;
+    const model = body.model || llmCfg.model;
+    const baseURL = body.baseURL || llmCfg.baseURL;
     const testModel = model || 'gpt-4';
     const testBaseURL = baseURL || 'https://api.openai.com/v1';
     if (!apiKey) {

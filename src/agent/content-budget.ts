@@ -71,6 +71,11 @@ export function formatToolResult(rawText: string, toolName: string): string {
   try {
     const data = JSON.parse(rawText);
 
+    // Only process plain objects, not arrays or primitives
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+      return truncate(rawText, SAFETY_MAX);
+    }
+
     // Priority 1: Use aiMarkdown if available and within budget
     if (typeof data.aiMarkdown === 'string' && data.aiMarkdown.length > 0) {
       const md = data.aiMarkdown;

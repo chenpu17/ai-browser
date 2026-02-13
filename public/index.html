@@ -4,50 +4,71 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Browser</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <style>
 /* ===== CSS Design System ===== */
 :root {
-  --bg-canvas: #0d1117;
-  --bg-surface: #161b22;
-  --bg-overlay: #21262d;
-  --border: #30363d;
-  --text-primary: #c9d1d9;
-  --text-secondary: #8b949e;
-  --text-muted: #484f58;
-  --accent: #58a6ff;
-  --green: #238636;
-  --green-hover: #2ea043;
-  --red: #da3633;
-  --blue: #1f6feb;
-  --purple: #8957e5;
-  --orange: #f78166;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
-  --shadow: 0 1px 3px rgba(0,0,0,0.3);
-  --transition: 150ms ease;
+  --bg-canvas: #0a0e14;
+  --bg-surface: #12171f;
+  --bg-overlay: #1a2030;
+  --bg-elevated: #1e2536;
+  --border: #252d3a;
+  --border-subtle: #1c2333;
+  --border-accent: rgba(99,160,255,0.2);
+  --text-primary: #d4dae4;
+  --text-secondary: #8892a2;
+  --text-muted: #4a5568;
+  --accent: #63a0ff;
+  --accent-dim: rgba(99,160,255,0.12);
+  --accent-glow: rgba(99,160,255,0.25);
+  --green: #22c55e;
+  --green-dim: rgba(34,197,94,0.12);
+  --green-hover: #16a34a;
+  --red: #ef4444;
+  --red-dim: rgba(239,68,68,0.12);
+  --blue: #3b82f6;
+  --blue-dim: rgba(59,130,246,0.12);
+  --purple: #a78bfa;
+  --purple-dim: rgba(167,139,250,0.12);
+  --orange: #fb923c;
+  --orange-dim: rgba(251,146,60,0.12);
+  --yellow: #facc15;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.15);
+  --shadow: 0 2px 8px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.2);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.2);
+  --shadow-glow: 0 0 20px rgba(99,160,255,0.08);
+  --transition: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: var(--bg-canvas);
+  background-image: radial-gradient(ellipse at 50% 0%, rgba(99,160,255,0.03) 0%, transparent 60%);
   color: var(--text-primary);
   height: 100vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ===== Scrollbar ===== */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
 /* ===== Header / Nav ===== */
@@ -57,9 +78,12 @@ body {
   padding: 0 20px;
   display: flex;
   align-items: center;
-  height: 48px;
+  height: 52px;
   flex-shrink: 0;
   gap: 16px;
+  box-shadow: 0 1px 8px rgba(0,0,0,0.2);
+  position: relative;
+  z-index: 10;
 }
 .app-logo {
   color: var(--accent);
@@ -67,39 +91,40 @@ body {
   font-weight: 700;
   white-space: nowrap;
   letter-spacing: -0.3px;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 .nav-tabs {
   display: flex;
   gap: 2px;
   margin-left: 8px;
+  background: var(--bg-canvas);
+  border-radius: var(--radius-md);
+  padding: 3px;
 }
 .nav-tab {
   padding: 6px 16px;
   font-size: 13px;
   font-weight: 500;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all var(--transition);
   position: relative;
 }
+.nav-tab .tab-icon { font-size: 14px; margin-right: 2px; }
 .nav-tab:hover { color: var(--text-primary); background: var(--bg-overlay); }
 .nav-tab.active {
   color: var(--accent);
-  background: rgba(88,166,255,0.1);
+  background: var(--bg-overlay);
+  box-shadow: var(--shadow-sm);
 }
 .nav-tab.active::after {
-  content: '';
-  position: absolute;
-  bottom: -7px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 60%;
-  height: 2px;
-  background: var(--accent);
-  border-radius: 1px;
+  display: none;
 }
 .header-right {
   display: flex;
@@ -109,7 +134,7 @@ body {
 
 /* ===== Shared Button Styles ===== */
 .btn {
-  padding: 6px 14px;
+  padding: 7px 14px;
   font-size: 13px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -119,34 +144,39 @@ body {
   background: var(--bg-overlay);
   color: var(--text-primary);
   white-space: nowrap;
+  box-shadow: var(--shadow-sm);
 }
-.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn:hover { border-color: var(--accent); color: var(--accent); background: var(--bg-elevated); }
 .btn-primary {
-  background: var(--green);
+  background: linear-gradient(135deg, var(--green), var(--green-hover));
   color: #fff;
-  border-color: var(--green);
+  border-color: transparent;
+  box-shadow: 0 2px 8px rgba(34,197,94,0.2);
 }
-.btn-primary:hover { background: var(--green-hover); border-color: var(--green-hover); color: #fff; }
+.btn-primary:hover { background: linear-gradient(135deg, var(--green-hover), #15803d); border-color: transparent; color: #fff; box-shadow: 0 2px 12px rgba(34,197,94,0.3); }
 .btn-primary:disabled {
   background: var(--bg-overlay);
   color: var(--text-muted);
   border-color: var(--border);
   cursor: not-allowed;
+  box-shadow: none;
 }
 .btn-danger { border-color: var(--red); color: var(--red); }
-.btn-danger:hover { background: var(--red); color: #fff; }
+.btn-danger:hover { background: var(--red); color: #fff; box-shadow: 0 2px 8px rgba(239,68,68,0.25); }
 .btn-send {
-  padding: 10px 20px;
-  background: var(--green);
+  padding: 10px 24px;
+  background: linear-gradient(135deg, var(--accent), #4f8ef7);
   color: #fff;
   border: none;
   border-radius: var(--radius-lg);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+  box-shadow: 0 2px 10px rgba(99,160,255,0.25);
+  transition: all var(--transition);
 }
-.btn-send:hover { background: var(--green-hover); }
-.btn-send:disabled { background: var(--bg-overlay); color: var(--text-muted); cursor: not-allowed; }
+.btn-send:hover { box-shadow: 0 4px 16px rgba(99,160,255,0.35); transform: translateY(-1px); }
+.btn-send:disabled { background: var(--bg-overlay); color: var(--text-muted); cursor: not-allowed; box-shadow: none; transform: none; }
 
 /* ===== Main Layout ===== */
 .app-main {
@@ -165,15 +195,17 @@ body {
   animation: viewFadeIn 200ms ease;
 }
 @keyframes viewFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* ===== Shared Modal ===== */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.7);
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -183,41 +215,43 @@ body {
 .modal {
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 24px;
+  border-radius: var(--radius-xl);
+  padding: 28px;
   width: 440px;
   max-width: 90vw;
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
 }
-.modal h2 { font-size: 16px; color: var(--text-primary); margin-bottom: 16px; }
+.modal h2 { font-size: 16px; color: var(--text-primary); margin-bottom: 16px; font-weight: 600; }
 .modal label {
   display: block;
   font-size: 13px;
   color: var(--text-secondary);
   margin-bottom: 4px;
-  margin-top: 12px;
+  margin-top: 14px;
 }
 .modal label:first-of-type { margin-top: 0; }
 .modal input[type="text"],
 .modal input[type="password"],
 .modal input[type="number"] {
   width: 100%;
-  padding: 8px 12px;
+  padding: 9px 12px;
   font-size: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-canvas);
   color: var(--text-primary);
   outline: none;
+  transition: all var(--transition);
 }
-.modal input:focus { border-color: var(--accent); }
+.modal input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
 .modal-btns {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
   margin-top: 20px;
 }
-.btn-save { background: var(--green); color: #fff; border-color: var(--green); }
-.btn-save:hover { background: var(--green-hover); color: #fff; }
+.btn-save { background: linear-gradient(135deg, var(--green), var(--green-hover)); color: #fff; border-color: transparent; box-shadow: 0 2px 8px rgba(34,197,94,0.2); }
+.btn-save:hover { background: linear-gradient(135deg, var(--green-hover), #15803d); color: #fff; }
 
 /* ===== Shared Markdown ===== */
 .markdown-body {
@@ -241,20 +275,21 @@ body {
 }
 #view-semantic .sem-toolbar input[type="text"] {
   flex: 1;
-  padding: 8px 14px;
+  padding: 9px 14px;
   font-size: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-canvas);
   color: var(--text-primary);
   outline: none;
+  transition: all var(--transition);
 }
-#view-semantic .sem-toolbar input:focus { border-color: var(--accent); }
+#view-semantic .sem-toolbar input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
 
 .sem-stats-bar {
   background: var(--bg-overlay);
   border-bottom: 1px solid var(--border);
-  padding: 6px 20px;
+  padding: 7px 20px;
   display: flex;
   gap: 16px;
   font-size: 12px;
@@ -264,7 +299,7 @@ body {
 .sem-stats-bar .stat-item {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
 }
 .sem-stats-bar .stat-val {
   color: var(--accent);
@@ -301,15 +336,16 @@ body {
   flex-shrink: 0;
 }
 .sem-content-tab {
-  padding: 4px 12px;
+  padding: 5px 12px;
   font-size: 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
+  transition: all var(--transition);
 }
-.sem-content-tab.active { background: var(--bg-overlay); color: var(--accent); border-color: var(--accent); }
+.sem-content-tab.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
 
 .sem-content-area {
   flex: 1;
@@ -358,14 +394,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   margin-bottom: 6px;
   background: var(--bg-canvas);
-  transition: all 0.15s;
+  transition: all var(--transition);
 }
-.element-item:hover { border-color: var(--accent); background: var(--bg-surface); }
+.element-item:hover { border-color: var(--accent); background: var(--bg-surface); box-shadow: 0 0 0 1px var(--accent-dim); }
 .element-info { flex: 1; min-width: 0; }
 .element-type {
   display: inline-block;
@@ -374,11 +410,12 @@ body {
   font-size: 11px;
   font-weight: 600;
   margin-right: 8px;
+  letter-spacing: 0.3px;
 }
-.element-type.button { background: var(--green); color: white; }
-.element-type.link { background: var(--blue); color: white; }
-.element-type.textbox { background: var(--purple); color: white; }
-.element-type.checkbox { background: var(--orange); color: white; }
+.element-type.button { background: var(--green-dim); color: var(--green); }
+.element-type.link { background: var(--blue-dim); color: var(--accent); }
+.element-type.textbox { background: var(--purple-dim); color: var(--purple); }
+.element-type.checkbox { background: var(--orange-dim); color: var(--orange); }
 .element-label { font-weight: 500; color: var(--text-primary); font-size: 13px; }
 .element-id {
   font-size: 11px;
@@ -416,15 +453,16 @@ body {
 }
 .filter-bar.hidden { display: none; }
 .filter-btn {
-  padding: 3px 10px;
+  padding: 4px 10px;
   font-size: 11px;
   background: var(--bg-overlay);
   color: var(--text-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   cursor: pointer;
+  transition: all var(--transition);
 }
-.filter-btn.active { background: var(--blue); color: white; border-color: var(--blue); }
+.filter-btn.active { background: var(--blue-dim); color: var(--accent); border-color: var(--accent); }
 
 /* Log drawer */
 .sem-log-drawer {
@@ -474,15 +512,16 @@ body {
   display: none;
 }
 .sem-status.visible { display: block; }
-.sem-status.loading { background: #1f2937; color: #60a5fa; }
-.sem-status.success { background: #064e3b; color: #34d399; }
-.sem-status.error { background: #7f1d1d; color: #fca5a5; }
+.sem-status.loading { background: var(--accent-dim); color: var(--accent); }
+.sem-status.success { background: var(--green-dim); color: var(--green); }
+.sem-status.error { background: var(--red-dim); color: var(--red); }
 
 .placeholder-text {
   color: var(--text-muted);
   font-size: 14px;
   text-align: center;
-  padding: 40px 20px;
+  padding: 48px 20px;
+  line-height: 1.6;
 }
 </style>
 <style>
@@ -502,22 +541,23 @@ body {
 }
 .chat-input-bar {
   border-top: 1px solid var(--border);
-  padding: 12px 16px;
+  padding: 14px 16px;
   display: flex;
-  gap: 8px;
+  gap: 10px;
   background: var(--bg-surface);
 }
 .chat-input-bar input {
   flex: 1;
-  padding: 10px 14px;
+  padding: 10px 16px;
   font-size: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-canvas);
   color: var(--text-primary);
   outline: none;
+  transition: all var(--transition);
 }
-.chat-input-bar input:focus { border-color: var(--accent); }
+.chat-input-bar input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
 
 /* Preview panel */
 .preview-panel {
@@ -536,15 +576,16 @@ body {
 }
 .preview-tabs { display: flex; gap: 4px; }
 .preview-tab {
-  padding: 4px 14px;
+  padding: 5px 14px;
   font-size: 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
+  transition: all var(--transition);
 }
-.preview-tab.active { background: var(--bg-overlay); color: var(--accent); border-color: var(--accent); }
+.preview-tab.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
 .preview-url {
   font-size: 12px;
   color: var(--accent);
@@ -635,14 +676,15 @@ body {
 .msg-user { text-align: right; }
 .msg-user .bubble {
   display: inline-block;
-  background: var(--blue);
+  background: linear-gradient(135deg, var(--blue), #2563eb);
   color: #fff;
-  padding: 8px 14px;
-  border-radius: 12px 12px 2px 12px;
+  padding: 10px 16px;
+  border-radius: 16px 16px 4px 16px;
   max-width: 85%;
   text-align: left;
   font-size: 14px;
   animation: fadeIn 200ms ease;
+  box-shadow: 0 2px 8px rgba(59,130,246,0.2);
 }
 .msg-system {
   text-align: center;
@@ -654,19 +696,21 @@ body {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 8px 12px;
+  padding: 10px 14px;
   font-size: 13px;
   color: var(--text-secondary);
   font-style: italic;
   animation: fadeIn 200ms ease;
+  border-left: 3px solid var(--accent);
 }
 .msg-thinking .markdown-body { font-style: normal; font-size: 13px; }
 .msg .md-inline { font-style: normal; }
 .msg-tool-call {
   background: var(--bg-canvas);
-  border: 1px solid var(--blue);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
   border-radius: var(--radius-lg);
-  padding: 8px 12px;
+  padding: 10px 14px;
   font-size: 13px;
   animation: fadeIn 200ms ease;
 }
@@ -716,8 +760,8 @@ body {
   font-size: 13px;
   animation: fadeIn 200ms ease;
 }
-.msg-tool-result.success { border: 1px solid var(--green); }
-.msg-tool-result.fail { border: 1px solid var(--red); }
+.msg-tool-result.success { border: 1px solid var(--border); border-left: 3px solid var(--green); }
+.msg-tool-result.fail { border: 1px solid var(--border); border-left: 3px solid var(--red); }
 .msg-tool-result .result-content {
   max-height: 120px;
   overflow: hidden;
@@ -756,34 +800,58 @@ body {
 }
 
 .msg-error {
-  background: #1c0c0c;
-  border: 1px solid var(--red);
+  background: var(--red-dim);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--red);
   border-radius: var(--radius-lg);
-  padding: 8px 12px;
+  padding: 10px 14px;
   font-size: 13px;
   color: #fca5a5;
   animation: fadeIn 200ms ease;
 }
 .msg-done {
-  border-radius: 10px;
-  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  padding: 14px 18px;
   font-size: 14px;
   animation: fadeIn 200ms ease;
 }
-.msg-done.success { background: #0a2e1a; border: 2px solid var(--green); }
-.msg-done.fail { background: #2d0a0a; border: 2px solid var(--red); }
+.msg-done.success { background: var(--green-dim); border: 1px solid var(--green); border-left: 4px solid var(--green); }
+.msg-done.fail { background: var(--red-dim); border: 1px solid var(--red); border-left: 4px solid var(--red); }
 .msg-done .title { font-weight: 700; margin-bottom: 4px; }
 .msg-done .markdown-body { font-size: 14px; }
 
+.msg-memory-recall {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(59, 130, 246, 0.08));
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-left: 3px solid #8b5cf6;
+  border-radius: var(--radius-lg);
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #c4b5fd;
+  animation: fadeIn 200ms ease;
+}
+.memory-recall-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.memory-recall-hint .memory-icon {
+  font-size: 16px;
+}
+.memory-recall-hint strong {
+  color: #a78bfa;
+}
+
 .step-tag {
   display: inline-block;
-  background: var(--bg-overlay);
-  color: var(--text-secondary);
+  background: var(--accent-dim);
+  color: var(--accent);
   font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 3px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
   margin-right: 6px;
   font-style: normal;
+  font-weight: 600;
 }
 
 /* Progress bar */
@@ -798,10 +866,11 @@ body {
 .progress-bar-wrap.active { display: block; }
 .progress-bar-fill {
   height: 100%;
-  background: var(--accent);
+  background: linear-gradient(90deg, var(--accent), var(--purple));
   border-radius: 2px;
   transition: width 0.4s ease;
   width: 0%;
+  box-shadow: 0 0 8px rgba(99,160,255,0.4);
 }
 .progress-info {
   display: none;
@@ -844,7 +913,9 @@ body {
 .type-input-modal {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.8);
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -854,9 +925,10 @@ body {
 .type-input-modal .modal-content {
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 24px;
+  border-radius: var(--radius-xl);
+  padding: 28px;
   width: 400px;
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
 }
 .type-input-modal .modal-title {
   font-size: 16px;
@@ -873,8 +945,9 @@ body {
   color: var(--text-primary);
   outline: none;
   margin-bottom: 16px;
+  transition: all var(--transition);
 }
-.type-input-modal .modal-input:focus { border-color: var(--accent); }
+.type-input-modal .modal-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
 .type-input-modal .modal-buttons {
   display: flex;
   gap: 10px;
@@ -904,11 +977,12 @@ body {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 14px;
+  padding: 16px;
   cursor: pointer;
   transition: all var(--transition);
+  box-shadow: var(--shadow-sm);
 }
-.task-card:hover { border-color: var(--accent); }
+.task-card:hover { border-color: var(--accent); box-shadow: var(--shadow), 0 0 0 1px var(--accent-dim); transform: translateY(-1px); }
 .task-card .task-header {
   display: flex;
   justify-content: space-between;
@@ -922,14 +996,15 @@ body {
 }
 .task-status {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: var(--radius-sm);
   font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0.3px;
 }
-.task-status.running { background: rgba(88,166,255,0.15); color: var(--accent); }
-.task-status.done { background: rgba(35,134,54,0.15); color: #3fb950; }
-.task-status.failed { background: rgba(218,54,51,0.15); color: #f85149; }
+.task-status.running { background: var(--accent-dim); color: var(--accent); }
+.task-status.done { background: var(--green-dim); color: var(--green); }
+.task-status.failed { background: var(--red-dim); color: var(--red); }
 .task-status.pending { background: var(--bg-overlay); color: var(--text-muted); }
 .task-card .task-goal {
   font-size: 14px;
@@ -994,16 +1069,17 @@ body {
 .task-create-form input,
 .task-create-form textarea {
   width: 100%;
-  padding: 8px 12px;
+  padding: 9px 12px;
   font-size: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-canvas);
   color: var(--text-primary);
   outline: none;
+  transition: all var(--transition);
 }
 .task-create-form input:focus,
-.task-create-form textarea:focus { border-color: var(--accent); }
+.task-create-form textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
 .task-create-form textarea { min-height: 80px; resize: vertical; }
 .task-create-form .form-row {
   display: grid;
@@ -1016,6 +1092,598 @@ body {
   gap: 8px;
 }
 
+/* ===== Memory View Styles ===== */
+.memory-toolbar {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 20px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.memory-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+.memory-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  cursor: pointer;
+  transition: all var(--transition);
+  box-shadow: var(--shadow-sm);
+}
+.memory-card:hover { border-color: var(--accent); box-shadow: var(--shadow), 0 0 0 1px var(--accent-dim); transform: translateY(-1px); }
+.memory-card .memory-domain {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.memory-card .memory-domain .site-type {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--purple-dim);
+  color: var(--purple);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.memory-card .memory-domain .login-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--orange-dim);
+  color: var(--orange);
+}
+.memory-card .memory-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.memory-card .memory-patterns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.memory-card .pattern-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-overlay);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.memory-detail {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+.memory-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.memory-detail .pattern-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.memory-detail .pattern-item {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  transition: all var(--transition);
+}
+.memory-detail .pattern-item:hover { border-color: var(--border); background: var(--bg-surface); }
+.memory-detail .pattern-type {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  margin-right: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.memory-detail .pattern-type.selector { background: var(--green-dim); color: var(--green); }
+.memory-detail .pattern-type.navigation_path { background: var(--blue-dim); color: var(--accent); }
+.memory-detail .pattern-type.login_required { background: var(--orange-dim); color: var(--orange); }
+.memory-detail .pattern-type.spa_hint { background: var(--purple-dim); color: var(--purple); }
+.memory-detail .pattern-type.page_structure { background: var(--accent-dim); color: var(--accent); }
+.memory-detail .pattern-desc { font-size: 13px; color: var(--text-primary); margin-top: 4px; }
+.memory-detail .pattern-value {
+  font-size: 12px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: var(--bg-overlay);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.memory-detail .pattern-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  display: flex;
+  gap: 12px;
+}
+.memory-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.memory-empty .empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.3;
+}
+
+/* ===== Recording View ===== */
+.rec-state { display: none; }
+.rec-state.active { display: flex; flex-direction: column; height: 100%; }
+
+.rec-state.rec-setup {
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  gap: 20px;
+}
+.rec-setup .rec-url-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 600px;
+}
+.rec-setup .rec-url-row input {
+  flex: 1;
+}
+.rec-setup .rec-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  max-width: 480px;
+  line-height: 1.6;
+}
+
+.rec-split {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.rec-left-panel {
+  width: 50%;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.rec-right-panel {
+  width: 50%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Recording indicator bar */
+.rec-indicator-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--bg-overlay);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--red);
+  animation: recPulse 1.2s ease-in-out infinite;
+}
+@keyframes recPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }
+  50% { opacity: 0.6; box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+}
+.rec-indicator-bar .rec-timer {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.rec-indicator-bar .rec-event-count {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-left: auto;
+}
+.rec-indicator-bar .btn-danger {
+  flex-shrink: 0;
+}
+
+/* Event stream */
+.rec-event-stream {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+.rec-event-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  animation: recFadeIn 0.3s ease;
+}
+@keyframes recFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rec-event-item .ev-icon {
+  font-size: 14px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.rec-event-item .ev-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.ev-badge.navigate { background: var(--blue-dim); color: var(--blue); }
+.ev-badge.click { background: var(--green-dim); color: var(--green); }
+.ev-badge.type { background: var(--purple-dim); color: var(--purple); }
+.ev-badge.select { background: var(--orange-dim); color: var(--orange); }
+.ev-badge.scroll { background: var(--accent-dim); color: var(--accent); }
+.rec-event-item .ev-desc {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rec-event-item .ev-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* Screenshot preview */
+.rec-preview-header, .rec-review-header {
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.rec-preview-body {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12px;
+  background: var(--bg-canvas);
+}
+.rec-preview-body img {
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.rec-preview-body .skeleton {
+  width: 100%;
+  aspect-ratio: 16/10;
+  background: linear-gradient(90deg, var(--bg-overlay) 25%, var(--bg-elevated) 50%, var(--bg-overlay) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Review state */
+.rec-summary {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  flex-shrink: 0;
+}
+.rec-summary .sum-item {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.rec-summary .sum-item strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.rec-timeline {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+.rec-patterns-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+.rec-pattern-item {
+  padding: 10px 12px;
+  background: var(--bg-overlay);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.rec-pattern-item .pat-type {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  background: var(--accent-dim);
+  color: var(--accent);
+  margin-right: 6px;
+}
+.rec-pattern-item .pat-desc {
+  color: var(--text-primary);
+  margin-top: 4px;
+}
+.rec-pattern-item .pat-value {
+  color: var(--text-muted);
+  font-family: monospace;
+  font-size: 11px;
+  margin-top: 4px;
+  word-break: break-all;
+}
+.rec-intent-section {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.rec-intent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+.rec-intent-hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.rec-intent-textarea {
+  width: 100%;
+  min-height: 80px;
+  max-height: 200px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.rec-intent-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.rec-intent-textarea.loading {
+  opacity: 0.5;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--bg-canvas),
+    var(--bg-canvas) 10px,
+    var(--bg-overlay) 10px,
+    var(--bg-overlay) 20px
+  );
+  background-size: 28px 28px;
+  animation: recShimmer 1s linear infinite;
+}
+@keyframes recShimmer {
+  to { background-position: 28px 0; }
+}
+.rec-actions {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+.rec-success-msg {
+  padding: 12px 16px;
+  background: var(--green-dim);
+  color: var(--green);
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+  margin: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rec-empty-events {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: var(--text-muted);
+  font-size: 13px;
+  gap: 8px;
+}
+
+/* ===== Welcome Banner ===== */
+.welcome-banner {
+  background: linear-gradient(135deg, var(--bg-surface), var(--bg-elevated));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 28px 32px;
+  margin: 20px;
+  position: relative;
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  animation: viewFadeIn 400ms ease;
+}
+.welcome-banner .welcome-close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
+}
+.welcome-banner .welcome-close:hover { color: var(--text-primary); background: var(--bg-overlay); }
+.welcome-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.welcome-title .logo-icon {
+  font-size: 24px;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.welcome-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+.welcome-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.welcome-card {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  cursor: pointer;
+  transition: all var(--transition);
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+}
+.welcome-card:hover { border-color: var(--accent); background: var(--bg-overlay); transform: translateY(-2px); box-shadow: var(--shadow); }
+.welcome-card .wc-icon { font-size: 22px; margin-bottom: 8px; }
+.welcome-card .wc-name { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+.welcome-card .wc-desc { font-size: 11px; color: var(--text-secondary); line-height: 1.5; }
+.welcome-tip {
+  margin-top: 16px;
+  padding: 10px 14px;
+  background: var(--accent-dim);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ===== Onboarding Empty States ===== */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  flex: 1;
+}
+.empty-state .es-icon { font-size: 48px; opacity: 0.25; margin-bottom: 12px; }
+.empty-state .es-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
+.empty-state .es-desc { font-size: 13px; color: var(--text-secondary); max-width: 420px; line-height: 1.6; margin-bottom: 16px; }
+.empty-state .es-steps {
+  text-align: left;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 2;
+  margin-bottom: 16px;
+}
+.empty-state .es-steps .step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  margin-right: 8px;
+}
+.empty-state .es-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 4px;
+}
+.empty-state .es-example {
+  font-size: 11px;
+  padding: 4px 10px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition);
+  font-family: inherit;
+}
+.empty-state .es-example:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
 /* ===== Responsive ===== */
 @media (max-width: 900px) {
   .sem-body { flex-direction: column; padding-bottom: 28px; }
@@ -1025,6 +1693,12 @@ body {
   .chat-panel, .preview-panel { width: 100%; border-right: none; }
   .preview-panel { border-top: 1px solid var(--border); }
   .tasks-list { grid-template-columns: 1fr; }
+  .memory-list { grid-template-columns: 1fr !important; }
+  .rec-split { flex-direction: column; }
+  .rec-left-panel, .rec-right-panel { width: 100%; border-right: none; }
+  .rec-right-panel { border-top: 1px solid var(--border); }
+  .welcome-banner { margin: 12px; padding: 20px; }
+  .welcome-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
 }
 @media (max-width: 768px) {
   .app-logo { font-size: 13px; }
@@ -1036,11 +1710,17 @@ body {
 }
 @media (max-width: 480px) {
   .preview-panel { display: none; }
+  .rec-right-panel { display: none; }
+  .rec-left-panel { width: 100%; border-right: none; }
   .chat-panel { width: 100%; border-right: none; }
   .chat-input-bar input { font-size: 16px; padding: 12px 14px; }
   .msg-tool-result .result-content { max-height: 80px; }
   .header-right { gap: 4px; }
   .btn { padding: 5px 8px; font-size: 12px; }
+  .tab-icon { display: none; }
+  .welcome-banner { margin: 8px; padding: 16px; }
+  .welcome-grid { grid-template-columns: 1fr 1fr; }
+  .welcome-tip { flex-direction: column; text-align: center; }
 }
   </style>
 </head>
@@ -1049,17 +1729,54 @@ body {
 <header class="app-header">
   <span class="app-logo">AI Browser</span>
   <div class="nav-tabs">
-    <button class="nav-tab active" onclick="switchView('semantic')">Semantic</button>
-    <button class="nav-tab" onclick="switchView('agent')">Agent</button>
-    <button class="nav-tab" onclick="switchView('tasks')">Tasks</button>
+    <button class="nav-tab active" data-view="semantic" onclick="switchView('semantic')" title="Analyze page structure and elements"><span class="tab-icon">&#128270;</span> Semantic</button>
+    <button class="nav-tab" data-view="agent" onclick="switchView('agent')" title="AI agent that browses the web for you"><span class="tab-icon">&#129302;</span> Agent</button>
+    <button class="nav-tab" data-view="tasks" onclick="switchView('tasks')" title="Run deterministic task templates"><span class="tab-icon">&#128203;</span> Tasks</button>
+    <button class="nav-tab" data-view="memory" onclick="switchView('memory')" title="Site knowledge learned from browsing"><span class="tab-icon">&#129504;</span> Memory</button>
+    <button class="nav-tab" data-view="record" onclick="switchView('record')" title="Record browsing sessions to build memory"><span class="tab-icon">&#9210;</span> Record</button>
   </div>
   <div class="header-right" id="headerRight">
     <button class="btn" id="btnCloseSession" style="display:none" onclick="Sem.closeSession()">Close Session</button>
     <button class="btn btn-danger" id="btnStop" style="display:none" onclick="Agent.stop()">Stop</button>
     <button class="btn" id="btnClear" style="display:none" onclick="Agent.clearChat()">Clear</button>
-    <button class="btn" id="btnSettings" onclick="openSettings()">Settings</button>
+    <button class="btn" id="btnSettings" onclick="openSettings()" title="Configure LLM provider (API key, model, base URL)">&#9881; Settings</button>
   </div>
 </header>
+
+<!-- ===== Welcome Banner ===== -->
+<div class="welcome-banner" id="welcomeBanner" style="display:none;">
+  <button class="welcome-close" onclick="dismissWelcome()" title="Dismiss" aria-label="Dismiss welcome banner">&times;</button>
+  <div class="welcome-title"><span class="logo-icon">&#127760;</span> Welcome to AI Browser</div>
+  <div class="welcome-subtitle">An AI-powered browser automation platform. Analyze pages, run autonomous agents, create repeatable tasks, and build site memory — all from one interface.</div>
+  <div class="welcome-grid">
+    <button class="welcome-card" onclick="dismissWelcome();switchView('semantic')">
+      <div class="wc-icon">&#128270;</div>
+      <div class="wc-name">Semantic</div>
+      <div class="wc-desc">Open any URL and inspect its structure — interactive elements, markdown content, and screenshots.</div>
+    </button>
+    <button class="welcome-card" onclick="dismissWelcome();switchView('agent')">
+      <div class="wc-icon">&#129302;</div>
+      <div class="wc-name">Agent</div>
+      <div class="wc-desc">Give a natural-language task. The AI agent opens a browser and completes it autonomously.</div>
+    </button>
+    <button class="welcome-card" onclick="dismissWelcome();switchView('tasks')">
+      <div class="wc-icon">&#128203;</div>
+      <div class="wc-name">Tasks</div>
+      <div class="wc-desc">Create and run deterministic task templates — repeatable browser automations with artifacts.</div>
+    </button>
+    <button class="welcome-card" onclick="dismissWelcome();switchView('memory')">
+      <div class="wc-icon">&#129504;</div>
+      <div class="wc-name">Memory</div>
+      <div class="wc-desc">View site knowledge cards — selectors, navigation paths, and patterns the system has learned.</div>
+    </button>
+    <button class="welcome-card" onclick="dismissWelcome();switchView('record')">
+      <div class="wc-icon">&#9210;</div>
+      <div class="wc-name">Record</div>
+      <div class="wc-desc">Record your own browsing session. Your actions are captured and saved as reusable site memory.</div>
+    </button>
+  </div>
+  <div class="welcome-tip">&#128161; First time? Start with <strong style="margin:0 4px;">Semantic</strong> to explore a page, or jump to <strong style="margin:0 4px;">Agent</strong> to let AI do the work. Configure your LLM in <strong style="margin:0 4px;">Settings</strong> (top right).</div>
+</div>
 
 <!-- ===== Main ===== -->
 <main class="app-main">
@@ -1067,7 +1784,7 @@ body {
   <div id="view-semantic" class="view active">
     <!-- Toolbar -->
     <div class="sem-toolbar">
-      <input type="text" id="semUrlInput" placeholder="Enter URL, e.g. https://www.baidu.com" value="https://www.baidu.com">
+      <input type="text" id="semUrlInput" placeholder="Enter URL to analyze, e.g. https://www.baidu.com" value="https://www.baidu.com">
       <button class="btn btn-primary" id="semAnalyzeBtn" onclick="Sem.analyze()">Analyze</button>
       <button class="btn" id="semRefreshBtn" style="display:none" onclick="Sem.refreshElements()">Refresh</button>
       <button class="btn" id="semSendToAgent" style="display:none" onclick="sendToAgent()">Send to Agent</button>
@@ -1096,7 +1813,17 @@ body {
         </div>
         <div class="filter-bar hidden" id="semFilterBar"></div>
         <div class="sem-content-area" id="semLeftContent">
-          <div class="placeholder-text">Enter a URL and click Analyze to start</div>
+          <div class="empty-state">
+            <div class="es-icon">&#128270;</div>
+            <div class="es-title">Semantic Page Analysis</div>
+            <div class="es-desc">Enter a URL above and click Analyze. The page will be parsed into structured markdown and interactive elements — buttons, links, inputs — each with a semantic ID you can use to automate interactions.</div>
+            <div class="es-steps">
+              <div><span class="step-num">1</span>Enter a URL in the toolbar above</div>
+              <div><span class="step-num">2</span>Click <strong>Analyze</strong> to open the page</div>
+              <div><span class="step-num">3</span>Browse elements, click or type into them</div>
+              <div><span class="step-num">4</span>Click <strong>Send to Agent</strong> to hand off the session</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1107,7 +1834,7 @@ body {
           <button class="sem-content-tab" onclick="Sem.switchRightTab('raw', this)">Raw Markdown</button>
         </div>
         <div class="sem-right-area" id="semRightContent">
-          <div class="placeholder-text">Waiting for analysis...</div>
+          <div class="placeholder-text" style="padding:32px 20px;font-size:13px;">Screenshot and raw markdown will appear here after analysis.</div>
         </div>
       </div>
     </div>
@@ -1127,7 +1854,22 @@ body {
       <!-- Left: Chat -->
       <div class="chat-panel">
         <div class="chat-messages" id="chatMessages">
-          <div class="placeholder-text">Enter a task to start</div>
+          <div class="empty-state" id="agentEmptyState">
+            <div class="es-icon">&#129302;</div>
+            <div class="es-title">AI Browsing Agent</div>
+            <div class="es-desc">Describe a task in natural language. The AI agent will open a browser, navigate pages, click buttons, fill forms, and extract information — all autonomously.</div>
+            <div class="es-steps">
+              <div><span class="step-num">1</span>Type a task in the input below</div>
+              <div><span class="step-num">2</span>Click <strong>Send</strong> — the agent starts working</div>
+              <div><span class="step-num">3</span>Watch progress in real-time on the right panel</div>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Try an example:</div>
+            <div class="es-examples">
+              <button class="es-example" onclick="document.getElementById('taskInput').value=this.textContent;document.getElementById('taskInput').focus()">Open Baidu and search for weather</button>
+              <button class="es-example" onclick="document.getElementById('taskInput').value=this.textContent;document.getElementById('taskInput').focus()">Go to GitHub trending and list top 5 repos</button>
+              <button class="es-example" onclick="document.getElementById('taskInput').value=this.textContent;document.getElementById('taskInput').focus()">Search Amazon for wireless headphones under $50</button>
+            </div>
+          </div>
         </div>
         <div class="typing-indicator" id="typingIndicator">
           <div class="typing-dot"></div>
@@ -1143,7 +1885,7 @@ body {
           <span id="progressSteps"></span>
         </div>
         <div class="chat-input-bar">
-          <input type="text" id="taskInput" placeholder="Enter a task, e.g.: Open Baidu and search for weather">
+          <input type="text" id="taskInput" placeholder="Describe a task, e.g.: Open Baidu and search for weather, then summarize the results">
           <button class="btn-send" id="sendBtn" onclick="Agent.start()">Send</button>
         </div>
       </div>
@@ -1159,7 +1901,7 @@ body {
           <span class="preview-url" id="previewUrl"></span>
         </div>
         <div class="preview-body" id="previewBody">
-          <div class="placeholder-text">Waiting for Agent output...</div>
+          <div class="placeholder-text" style="padding:32px 20px;font-size:13px;">Page markdown and screenshots will appear here as the agent browses.</div>
         </div>
       </div>
     </div>
@@ -1170,12 +1912,102 @@ body {
     <div class="tasks-toolbar">
       <button class="btn btn-primary" id="btnNewTask" onclick="Tasks.showCreate()">+ New Task</button>
       <button class="btn" onclick="Tasks.refreshList()">Refresh</button>
+      <span style="font-size:12px;color:var(--text-muted);margin-left:auto;">Run deterministic task templates — repeatable browser automations</span>
     </div>
     <div id="tasksList" class="tasks-list">
-      <div class="placeholder-text">Loading tasks...</div>
+      <div class="empty-state" id="tasksEmptyState">
+        <div class="es-icon">&#128203;</div>
+        <div class="es-title">Task Templates</div>
+        <div class="es-desc">Tasks are deterministic, repeatable browser automations. Create a task template with a URL and goal, then run it anytime. Unlike the Agent (which uses AI reasoning), tasks follow predefined steps.</div>
+        <div class="es-steps">
+          <div><span class="step-num">1</span>Click <strong>+ New Task</strong> to create a template</div>
+          <div><span class="step-num">2</span>Set a URL, goal, and optional parameters</div>
+          <div><span class="step-num">3</span>Run the task and view results with artifacts</div>
+        </div>
+      </div>
     </div>
     <div id="taskDetail" class="task-detail" style="display:none"></div>
     <div id="taskCreate" class="task-detail" style="display:none"></div>
+  </div>
+
+  <!-- Memory View -->
+  <div id="view-memory" class="view">
+    <div class="memory-toolbar">
+      <button class="btn" onclick="Memory.refreshList()">Refresh</button>
+      <span style="font-size:12px;color:var(--text-muted);margin-left:auto;">Site knowledge cards — selectors, navigation paths, and patterns learned from browsing</span>
+    </div>
+    <div id="memoryList" class="memory-list">
+      <div class="placeholder-text">Loading memory...</div>
+    </div>
+    <div id="memoryDetail" class="memory-detail" style="display:none"></div>
+  </div>
+
+  <!-- Record View -->
+  <div id="view-record" class="view">
+    <!-- Setup State -->
+    <div id="rec-setup" class="rec-state active rec-setup">
+      <div style="font-size:36px;opacity:0.3;margin-bottom:8px">&#9679;</div>
+      <div style="font-size:16px;font-weight:600;color:var(--text-primary)">Record a Browsing Session</div>
+      <div class="rec-hint">Enter a URL to start recording. A browser window will open — interact with the page normally. Your actions will be captured and converted to site memory.</div>
+      <div class="rec-url-row">
+        <input type="text" id="recUrlInput" placeholder="https://example.com" value="">
+        <button class="btn btn-primary" id="recStartBtn" onclick="Rec.start()">Start Recording</button>
+      </div>
+    </div>
+
+    <!-- Recording State -->
+    <div id="rec-active" class="rec-state">
+      <div class="rec-split">
+        <div class="rec-left-panel">
+          <div class="rec-indicator-bar">
+            <span class="rec-dot"></span>
+            <span class="rec-timer" id="recTimer">00:00</span>
+            <span class="rec-event-count" id="recEventCount">0 events</span>
+            <button class="btn btn-danger" onclick="Rec.stop()">Stop Recording</button>
+          </div>
+          <div class="rec-event-stream" id="recEventStream">
+            <div class="rec-empty-events">
+              <span style="font-size:24px;opacity:0.3">&#128065;</span>
+              <span>Waiting for interactions...</span>
+            </div>
+          </div>
+        </div>
+        <div class="rec-right-panel">
+          <div class="rec-preview-header">Live Preview</div>
+          <div class="rec-preview-body" id="recPreviewBody">
+            <div class="skeleton"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Review State -->
+    <div id="rec-review" class="rec-state">
+      <div class="rec-split">
+        <div class="rec-left-panel">
+          <div class="rec-summary" id="recSummary"></div>
+          <div class="rec-intent-section" id="recIntentSection">
+            <div class="rec-intent-header">
+              <span>Task Intent</span>
+              <span class="rec-intent-hint" id="recIntentHint">AI summarizing...</span>
+            </div>
+            <textarea id="recIntentText" class="rec-intent-textarea" rows="6" maxlength="1000" aria-label="Task Intent" placeholder="LLM is analyzing your recording..."></textarea>
+          </div>
+          <div class="rec-timeline" id="recTimeline"></div>
+        </div>
+        <div class="rec-right-panel">
+          <div class="rec-review-header">Extracted Patterns</div>
+          <div class="rec-patterns-body" id="recPatternsBody">
+            <div class="placeholder-text">No patterns extracted.</div>
+          </div>
+          <div id="recSuccessArea"></div>
+          <div class="rec-actions" id="recActions">
+            <button class="btn" onclick="Rec.discard()">Discard</button>
+            <button class="btn btn-primary" id="recSaveBtn" onclick="Rec.saveToMemory()">Save to Memory</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </main>
 <div class="modal-overlay hidden" id="settingsModal">
@@ -1189,6 +2021,8 @@ body {
     <input type="password" id="cfgApiKey" placeholder="sk-...">
     <label>Max Iterations</label>
     <input type="number" id="cfgMaxIterations" placeholder="Default (server-controlled)" min="1" max="1000">
+    <label>LLM Timeout (seconds)</label>
+    <input type="number" id="cfgTimeout" placeholder="300" min="10" max="600">
     <label style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer;">
       <input type="checkbox" id="cfgHeadless" checked style="width:auto;cursor:pointer;">
       Headless Mode
@@ -1247,6 +2081,7 @@ function openSettings() {
   document.getElementById('cfgModel').value = s.model || '';
   document.getElementById('cfgApiKey').value = s.apiKey || '';
   document.getElementById('cfgMaxIterations').value = s.maxIterations || '';
+  document.getElementById('cfgTimeout').value = s.timeout || '';
   document.getElementById('cfgHeadless').checked = s.headless !== false;
   document.getElementById('settingsModal').classList.remove('hidden');
 }
@@ -1261,6 +2096,7 @@ function saveSettings() {
     model: document.getElementById('cfgModel').value.trim(),
     apiKey: document.getElementById('cfgApiKey').value.trim(),
     maxIterations: parseInt(document.getElementById('cfgMaxIterations').value) || 0,
+    timeout: parseInt(document.getElementById('cfgTimeout').value) || 0,
     headless: document.getElementById('cfgHeadless').checked,
   };
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
@@ -1306,6 +2142,18 @@ function testConnection() {
 
 // ========== Navigation ==========
 function switchView(view) {
+  // Warn if leaving record view while recording or reviewing
+  if (App.currentView === 'record' && view !== 'record' && Rec.state === 'recording') {
+    if (!confirm('Recording is in progress. Leave and stop recording?')) return;
+    Rec.stopPolling();
+    Rec._stopBackendRecording();
+    Rec.cleanup();
+    Rec.reset();
+  }
+  if (App.currentView === 'record' && view !== 'record' && Rec.state === 'review') {
+    Rec.cleanup();
+    Rec.reset();
+  }
   App.currentView = view;
   location.hash = view;
   // Clean up Tasks polling when leaving
@@ -1316,11 +2164,20 @@ function switchView(view) {
   document.getElementById('view-semantic').classList.toggle('active', view === 'semantic');
   document.getElementById('view-agent').classList.toggle('active', view === 'agent');
   document.getElementById('view-tasks').classList.toggle('active', view === 'tasks');
+  document.getElementById('view-memory').classList.toggle('active', view === 'memory');
+  document.getElementById('view-record').classList.toggle('active', view === 'record');
   // Update nav tabs
   document.querySelectorAll('.nav-tab').forEach(function(tab) {
-    tab.classList.toggle('active', tab.textContent.toLowerCase() === view);
+    tab.classList.toggle('active', tab.getAttribute('data-view') === view);
   });
   if (view === 'tasks') Tasks.refreshList();
+  if (view === 'memory') Memory.refreshList();
+  if (view === 'record') {
+    var saved = localStorage.getItem('rec_last_url');
+    if (saved && !document.getElementById('recUrlInput').value) {
+      document.getElementById('recUrlInput').value = saved;
+    }
+  }
   updateHeaderButtons();
 }
 
@@ -1340,7 +2197,7 @@ function updateHeaderButtons() {
 // Hash routing
 window.addEventListener('hashchange', function() {
   var hash = location.hash.replace('#', '');
-  var view = (hash === 'agent') ? 'agent' : (hash === 'tasks') ? 'tasks' : 'semantic';
+  var view = (hash === 'agent') ? 'agent' : (hash === 'tasks') ? 'tasks' : (hash === 'memory') ? 'memory' : (hash === 'record') ? 'record' : 'semantic';
   if (view !== App.currentView) switchView(view);
 });
 
@@ -1856,8 +2713,8 @@ var Agent = {
     document.getElementById('previewUrl').textContent = '';
     self.renderPreview();
 
-    // Remove placeholder
-    var ph = document.getElementById('chatMessages').querySelector('.placeholder-text');
+    // Remove placeholder / empty state
+    var ph = document.getElementById('chatMessages').querySelector('.placeholder-text') || document.getElementById('agentEmptyState');
     if (ph) ph.remove();
 
     document.getElementById('sendBtn').disabled = true;
@@ -1873,6 +2730,7 @@ var Agent = {
     if (settings.baseURL) body.baseURL = settings.baseURL;
     if (settings.model) body.model = settings.model;
     if (settings.maxIterations) body.maxIterations = settings.maxIterations;
+    if (settings.timeout && settings.timeout > 0) body.timeout = settings.timeout;
     if (settings.headless === false) body.headless = false;
     if (self.conversationHistory.length > 0) body.messages = self.conversationHistory;
 
@@ -1997,6 +2855,9 @@ Agent.handleEvent = function(ev) {
         document.getElementById('progressInfo').classList.add('active');
       }
       break;
+    case 'memory_recall':
+      self.addMsg('memory_recall', ev.domain, ev.iteration, ev.patternCount);
+      break;
     case 'done':
       self.addMsg('done', ev.success ? (ev.result || 'Done') : (ev.error || 'Failed'), null, ev.success);
       var summary = 'Total steps: ' + ev.iterations;
@@ -2074,6 +2935,14 @@ Agent.addMsg = function(type, content, iteration, extra, extra2) {
     case 'error':
       el.className = 'msg msg-error';
       el.innerHTML = (iteration ? this.stepTag(iteration) : '') + 'Error: ' + esc(content);
+      break;
+    case 'memory_recall':
+      el.className = 'msg msg-memory-recall';
+      el.innerHTML = this.stepTag(iteration) +
+        '<div class="memory-recall-hint">' +
+        '<span class="memory-icon">🧠</span> ' +
+        '<span>Recalled site memory for <strong>' + esc(content) + '</strong> (' + (extra || 0) + ' patterns)</span>' +
+        '</div>';
       break;
     case 'done':
       el.className = 'msg msg-done ' + (extra ? 'success' : 'fail');
@@ -2367,7 +3236,7 @@ var Tasks = {
     fetch('/v1/tasks').then(function(r) { return r.json(); }).then(function(data) {
       var tasks = data.tasks || [];
       if (tasks.length === 0) {
-        list.innerHTML = '<div class="placeholder-text">No tasks yet. Click "+ New Task" to create one.</div>';
+        list.innerHTML = '<div class="empty-state"><div class="es-icon">&#128203;</div><div class="es-title">No Tasks Yet</div><div class="es-desc">Click <strong>+ New Task</strong> above to create a deterministic task template. Tasks are repeatable browser automations that run the same steps every time.</div><div class="es-steps"><div><span class="step-num">1</span>Click <strong>+ New Task</strong> to create a template</div><div><span class="step-num">2</span>Set a URL, goal, and optional parameters</div><div><span class="step-num">3</span>Run the task and view results with artifacts</div></div></div>';
         return;
       }
       list.innerHTML = '';
@@ -2538,12 +3407,661 @@ document.getElementById('typeValue').addEventListener('keypress', function(e) {
 </script>
 
 <script>
+// ===== Memory View =====
+var Memory = {
+  refreshList: function() {
+    var list = document.getElementById('memoryList');
+    list.innerHTML = '<div class="placeholder-text">Loading...</div>';
+    document.getElementById('memoryDetail').style.display = 'none';
+    list.style.display = '';
+
+    fetch('/v1/memory').then(function(r) { return r.json(); }).then(function(data) {
+      var entries = data.entries || [];
+      if (entries.length === 0) {
+        list.innerHTML = '<div class="empty-state"><div class="es-icon">&#129504;</div><div class="es-title">No Site Memories Yet</div><div class="es-desc">Memories are automatically learned when the agent completes tasks, or you can manually record browsing sessions in the <strong>Record</strong> tab. Each memory card stores selectors, navigation paths, and interaction patterns for a domain.</div><div class="es-examples"><span class="es-example" onclick="switchView(\'record\')">Go to Record tab</span><span class="es-example" onclick="switchView(\'agent\')">Run an Agent task</span></div></div>';
+        return;
+      }
+      list.innerHTML = '';
+      entries.forEach(function(entry) {
+        var card = document.createElement('div');
+        card.className = 'memory-card';
+        card.onclick = function() { Memory.showDetail(entry.domain); };
+
+        var badges = '';
+        if (entry.siteType && entry.siteType !== 'unknown') {
+          badges += '<span class="site-type">' + esc(entry.siteType) + '</span>';
+        }
+        if (entry.requiresLogin) {
+          badges += '<span class="login-badge">Login</span>';
+        }
+
+        var patterns = (entry.topPatterns || []).slice(0, 3);
+        var patternHtml = patterns.map(function(p) {
+          return '<span class="pattern-tag">' + esc(p) + '</span>';
+        }).join('');
+
+        var lastUsed = entry.lastUsedAt ? new Date(entry.lastUsedAt).toLocaleDateString() : '-';
+
+        card.innerHTML =
+          '<div class="memory-domain">' + esc(entry.domain) + badges + '</div>' +
+          '<div class="memory-meta">' + entry.patternCount + ' patterns · Last used: ' + lastUsed + '</div>' +
+          '<div class="memory-patterns">' + patternHtml + '</div>';
+        list.appendChild(card);
+      });
+    }).catch(function() {
+      list.innerHTML = '<div class="placeholder-text">Failed to load memories.</div>';
+    });
+  },
+
+  showDetail: function(domain) {
+    document.getElementById('memoryList').style.display = 'none';
+    var panel = document.getElementById('memoryDetail');
+    panel.style.display = 'block';
+    panel.innerHTML = '<div class="placeholder-text">Loading...</div>';
+
+    fetch('/v1/memory/' + encodeURIComponent(domain)).then(function(r) { return r.json(); }).then(function(card) {
+      var siteTag = card.siteType && card.siteType !== 'unknown' ? ' [' + card.siteType.toUpperCase() + ']' : '';
+      var html = '<div class="memory-detail-header">' +
+        '<button class="btn" onclick="Memory.backToList()">&larr; Back</button>' +
+        '<span style="font-size:16px;font-weight:600">' + esc(card.domain) + esc(siteTag) + '</span>' +
+        '<span style="font-size:12px;color:var(--text-muted)">v' + card.version + '</span>' +
+        '<button class="btn btn-danger" style="margin-left:auto" onclick="Memory.deleteDomain(\'' + esc(card.domain).replace(/'/g, '&#39;') + '\')">Delete</button>' +
+        '</div>';
+
+      html += '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">' +
+        'Created: ' + new Date(card.createdAt).toLocaleString() +
+        ' · Updated: ' + new Date(card.updatedAt).toLocaleString() +
+        (card.requiresLogin ? ' · <span style="color:var(--orange)">Requires Login</span>' : '') +
+        '</div>';
+
+      html += '<div class="pattern-list">';
+      (card.patterns || []).forEach(function(p) {
+        var now = Date.now();
+        var daysSince = (now - p.lastUsedAt) / 86400000;
+        var effConf = (p.confidence * Math.pow(0.95, daysSince)).toFixed(2);
+
+        html += '<div class="pattern-item">' +
+          '<span class="pattern-type ' + esc(p.type) + '">' + esc(p.type) + '</span>' +
+          '<span style="font-size:11px;color:var(--text-muted)">' + esc(p.source || '') + '</span>' +
+          '<div class="pattern-desc">' + esc(p.description) + '</div>' +
+          '<div class="pattern-value">' + esc(p.value) + '</div>' +
+          '<div class="pattern-meta">' +
+            '<span>Confidence: ' + effConf + '</span>' +
+            '<span>Used: ' + p.useCount + 'x</span>' +
+            '<span>Last: ' + new Date(p.lastUsedAt).toLocaleDateString() + '</span>' +
+          '</div>' +
+          '</div>';
+      });
+      html += '</div>';
+
+      panel.innerHTML = html;
+    }).catch(function() {
+      panel.innerHTML = '<div class="placeholder-text">Failed to load card.</div>' +
+        '<button class="btn" onclick="Memory.backToList()" style="margin-top:12px">&larr; Back</button>';
+    });
+  },
+
+  backToList: function() {
+    document.getElementById('memoryDetail').style.display = 'none';
+    document.getElementById('memoryList').style.display = '';
+    Memory.refreshList();
+  },
+
+  deleteDomain: function(domain) {
+    if (!confirm('Delete all memories for ' + domain + '?')) return;
+    fetch('/v1/memory/' + encodeURIComponent(domain), { method: 'DELETE' })
+      .then(function() { Memory.backToList(); })
+      .catch(function(err) { alert('Delete failed: ' + err.message); });
+  }
+};
+</script>
+
+<script>
+// ========== Recording ==========
+function recJsonOrThrow(r) {
+  if (!r.ok) return r.text().then(function(text) {
+    try {
+      var body = JSON.parse(text);
+      var err = body.error;
+      var msg = (err && err.message) ? err.message : (body.message || ('HTTP ' + r.status));
+      throw new Error(msg);
+    } catch(e) {
+      if (e instanceof SyntaxError) throw new Error('HTTP ' + r.status + ': ' + (text.slice(0, 200) || 'Unknown error'));
+      throw e;
+    }
+  });
+  return r.json();
+}
+
+/** Extract structural patterns from recording events (shared by renderReview and saveToMemory) */
+function extractPatternsFromEvents(events) {
+  var patterns = [];
+  var seen = {};
+  var now = Date.now();
+  var navEvents = events.filter(function(e) { return e.type === 'navigate' && e.url; });
+  if (navEvents.length >= 2) {
+    var paths = navEvents.map(function(e) {
+      try { return new URL(e.url).pathname; } catch(x) { return e.url; }
+    }).join(' → ');
+    if (!seen[paths]) {
+      seen[paths] = true;
+      patterns.push({ type: 'navigation_path', description: 'Navigation path', value: paths, confidence: 0.8, source: 'human_recording', createdAt: now, lastUsedAt: now, useCount: 0 });
+    }
+  }
+  events.forEach(function(e) {
+    if (e.type === 'click' && e.target && !seen['click:' + e.target]) {
+      seen['click:' + e.target] = true;
+      patterns.push({ type: 'selector', description: e.targetLabel || e.target, value: e.target, confidence: 0.8, source: 'human_recording', createdAt: now, lastUsedAt: now, useCount: 0 });
+    }
+    if ((e.type === 'type' || e.type === 'select') && e.target && !seen['input:' + e.target]) {
+      seen['input:' + e.target] = true;
+      patterns.push({ type: 'page_structure', description: e.targetLabel || e.target, value: e.target, confidence: 0.8, source: 'human_recording', createdAt: now, lastUsedAt: now, useCount: 0 });
+    }
+  });
+  return patterns;
+}
+
+var Rec = {
+  state: 'setup',
+  sessionId: null,
+  startTime: null,
+  timers: {},
+  lastEventCount: 0,
+  events: [],
+  _pollFailCount: 0,
+  _pollAbort: null,       // AbortController for in-flight poll requests
+  _stopping: false,       // guard against double-click on stop
+  _reviewData: null,      // stored stop response for saveToMemory
+  _summarizeAbort: null,  // AbortController for in-flight LLM summarization
+  _saving: false,         // guard against double-click on save
+
+  setState: function(s) {
+    this.state = s;
+    document.getElementById('rec-setup').classList.toggle('active', s === 'setup');
+    document.getElementById('rec-active').classList.toggle('active', s === 'recording');
+    document.getElementById('rec-review').classList.toggle('active', s === 'review');
+  },
+
+  start: function() {
+    var url = document.getElementById('recUrlInput').value.trim();
+    if (!url) { alert('Please enter a URL.'); return; }
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    localStorage.setItem('rec_last_url', url);
+
+    var btn = document.getElementById('recStartBtn');
+    btn.disabled = true;
+    btn.textContent = 'Starting...';
+    var self = this;
+
+    // 1. Create headful session
+    fetch('/v1/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: { headless: false } })
+    })
+    .then(recJsonOrThrow)
+    .then(function(data) {
+      self.sessionId = data.sessionId;
+      // 2. Navigate
+      return fetch('/v1/sessions/' + self.sessionId + '/navigate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url })
+      });
+    })
+    .then(recJsonOrThrow)
+    .then(function() {
+      // 3. Start recording
+      return fetch('/v1/sessions/' + self.sessionId + '/recording/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+    })
+    .then(recJsonOrThrow)
+    .then(function() {
+      self.startTime = Date.now();
+      self.lastEventCount = 0;
+      self.events = [];
+      self._pollFailCount = 0;
+      document.getElementById('recEventStream').innerHTML =
+        '<div class="rec-empty-events"><span style="font-size:24px;opacity:0.3">&#128065;</span><span>Waiting for interactions...</span></div>';
+      document.getElementById('recTimer').textContent = '00:00';
+      document.getElementById('recEventCount').textContent = '0 events';
+      document.getElementById('recPreviewBody').innerHTML = '<div class="skeleton"></div>';
+      self.setState('recording');
+      self.startPolling();
+    })
+    .catch(function(err) {
+      alert('Failed to start recording: ' + err.message);
+      if (self.sessionId) self.cleanup();
+      btn.disabled = false;
+      btn.textContent = 'Start Recording';
+    });
+  },
+
+  stop: function() {
+    if (!this.sessionId || this._stopping) return;
+    this._stopping = true;
+    var self = this;
+    // Abort all in-flight poll requests first so the connection pool is free
+    self.stopPolling();
+
+    fetch('/v1/sessions/' + self.sessionId + '/recording/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ convertToMemory: false })
+    })
+    .then(recJsonOrThrow)
+    .then(function(data) {
+      self._stopping = false;
+      self._reviewData = data;
+      self.renderReview(data);
+      self.setState('review');
+      // Fire LLM summarization in background
+      self.summarizeIntent(data);
+    })
+    .catch(function(err) {
+      self._stopping = false;
+      alert('Failed to stop recording: ' + err.message);
+      if (self.sessionId) {
+        self.setState('recording');
+        self.startPolling();
+      }
+    });
+  },
+
+  discard: function() {
+    this.stopPolling();
+    if (this.state === 'recording') {
+      this._stopBackendRecording();
+    }
+    this.cleanup();
+    this.reset();
+  },
+
+  goToMemory: function() {
+    this.cleanup();
+    this.reset();
+    switchView('memory');
+  },
+
+  summarizeIntent: function(data) {
+    var recording = data.recording || {};
+    var events = recording.events || [];
+    var domain = data.domain || recording.domain || '';
+    var textarea = document.getElementById('recIntentText');
+    var hint = document.getElementById('recIntentHint');
+    var saveBtn = document.getElementById('recSaveBtn');
+
+    if (events.length === 0) {
+      textarea.classList.remove('loading');
+      textarea.value = '';
+      textarea.placeholder = 'No events to analyze.';
+      hint.textContent = '';
+      return;
+    }
+
+    // Disable save while summarizing
+    if (saveBtn) saveBtn.disabled = true;
+    textarea.classList.add('loading');
+    textarea.disabled = true;
+    hint.textContent = 'AI summarizing...';
+
+    // Abort any previous summarize request
+    if (this._summarizeAbort) this._summarizeAbort.abort();
+    this._summarizeAbort = new AbortController();
+    var signal = this._summarizeAbort.signal;
+
+    // Pass LLM config from user settings (same as agent endpoints)
+    var settings = loadSettings();
+    var payload = { events: events, domain: domain };
+    if (settings.apiKey) payload.apiKey = settings.apiKey;
+    if (settings.baseURL) payload.baseURL = settings.baseURL;
+    if (settings.model) payload.model = settings.model;
+    payload.timeout = (settings.timeout && settings.timeout > 0) ? settings.timeout : 300;
+
+    fetch('/v1/recordings/summarize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: signal
+    })
+    // Backend returns 200 with { intent, error? } even on LLM failure — intentional
+    .then(function(r) {
+      if (!r.ok) return { intent: '', error: 'Server error (' + r.status + ')' };
+      return r.json();
+    })
+    .then(function(result) {
+      textarea.classList.remove('loading');
+      textarea.disabled = false;
+      if (saveBtn) saveBtn.disabled = false;
+      if (result.intent) {
+        textarea.value = result.intent;
+        hint.textContent = 'You can edit this before saving.';
+      } else {
+        textarea.value = '';
+        textarea.placeholder = result.error || 'Could not generate summary. You can write one manually.';
+        hint.textContent = result.error ? 'LLM unavailable' : '';
+        if (saveBtn) saveBtn.disabled = false;
+      }
+    })
+    .catch(function(err) {
+      if (err.name === 'AbortError') return; // expected on discard/reset
+      textarea.classList.remove('loading');
+      textarea.disabled = false;
+      if (saveBtn) saveBtn.disabled = false;
+      textarea.placeholder = 'Summarization failed. You can write one manually.';
+      hint.textContent = '';
+    });
+  },
+
+  saveToMemory: function() {
+    var data = this._reviewData;
+    if (!data) { alert('No recording data.'); return; }
+    if (this._saving) return;
+    this._saving = true;
+
+    var recording = data.recording || {};
+    var domain = data.domain || recording.domain || '';
+    if (!domain) { alert('Could not determine domain.'); return; }
+
+    var btn = document.getElementById('recSaveBtn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    var self = this;
+
+    // Build patterns from RecordingConverter (backend already computed them in stop)
+    // We re-use the existing PUT /v1/memory/:domain endpoint
+    // First, get the patterns that RecordingConverter would produce
+    // We'll send the events to the backend to convert + add intent
+    var intentText = document.getElementById('recIntentText').value.trim();
+    var patterns = [];
+
+    // Add task_intent pattern if user provided/edited intent
+    if (intentText) {
+      patterns.push({
+        type: 'task_intent',
+        description: 'Recording task intent',
+        value: intentText,
+        confidence: 0.9,
+        source: 'human_recording'
+      });
+    }
+
+    // Extract structural patterns from events (shared function)
+    var events = recording.events || [];
+    var structural = extractPatternsFromEvents(events);
+    for (var i = 0; i < structural.length; i++) patterns.push(structural[i]);
+
+    if (patterns.length === 0) {
+      alert('No patterns or intent to save.');
+      btn.disabled = false;
+      btn.textContent = 'Save to Memory';
+      self._saving = false;
+      return;
+    }
+
+    fetch('/v1/memory/' + encodeURIComponent(domain), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patterns: patterns })
+    })
+    .then(recJsonOrThrow)
+    .then(function(result) {
+      document.getElementById('recSuccessArea').innerHTML =
+        '<div class="rec-success-msg">&#10003; Saved to memory for <strong>' + esc(domain) + '</strong> (' + result.patternCount + ' patterns)</div>';
+      btn.textContent = 'Saved!';
+      // Replace buttons with "View Memory" link
+      document.getElementById('recActions').innerHTML =
+        '<button class="btn" onclick="Rec.discard()">New Recording</button>' +
+        '<button class="btn btn-primary" onclick="Rec.goToMemory()">View Memory</button>';
+    })
+    .catch(function(err) {
+      alert('Failed to save: ' + err.message);
+      btn.disabled = false;
+      btn.textContent = 'Save to Memory';
+      self._saving = false;
+    });
+  },
+
+  reset: function() {
+    this.state = 'setup';
+    this.sessionId = null;
+    this.startTime = null;
+    this.lastEventCount = 0;
+    this.events = [];
+    this._pollFailCount = 0;
+    this._pollAbort = null;
+    this._stopping = false;
+    this._reviewData = null;
+    if (this._summarizeAbort) { this._summarizeAbort.abort(); this._summarizeAbort = null; }
+    this._saving = false;
+    this.setState('setup');
+    document.getElementById('recSuccessArea').innerHTML = '';
+    var btn = document.getElementById('recStartBtn');
+    btn.disabled = false;
+    btn.textContent = 'Start Recording';
+  },
+
+  cleanup: function() {
+    if (!this.sessionId) return;
+    fetch('/v1/sessions/' + this.sessionId, { method: 'DELETE' }).catch(function() {});
+    this.sessionId = null;
+  },
+
+  /** Fire-and-forget stop recording on backend to clean up recorders Map */
+  _stopBackendRecording: function() {
+    if (!this.sessionId) return;
+    fetch('/v1/sessions/' + this.sessionId + '/recording/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ convertToMemory: false })
+    }).catch(function() {});
+  },
+
+  startPolling: function() {
+    var self = this;
+    this._pollAbort = new AbortController();
+    this.timers.timerInterval = setInterval(function() { self.updateTimer(); }, 1000);
+    this.timers.statusPoll = setInterval(function() { self.pollStatus(); }, 1000);
+    this.timers.screenshotPoll = setInterval(function() { self.pollScreenshot(); }, 3000);
+    // Immediate first screenshot (tracked for cleanup)
+    this.timers.initialScreenshot = setTimeout(function() { self.pollScreenshot(); }, 500);
+  },
+
+  stopPolling: function() {
+    if (this.timers.timerInterval) clearInterval(this.timers.timerInterval);
+    if (this.timers.statusPoll) clearInterval(this.timers.statusPoll);
+    if (this.timers.screenshotPoll) clearInterval(this.timers.screenshotPoll);
+    if (this.timers.initialScreenshot) clearTimeout(this.timers.initialScreenshot);
+    this.timers = {};
+    // Abort any in-flight poll fetches immediately
+    if (this._pollAbort) {
+      this._pollAbort.abort();
+      this._pollAbort = null;
+    }
+  },
+
+  updateTimer: function() {
+    if (!this.startTime) return;
+    var elapsed = Math.floor((Date.now() - this.startTime) / 1000);
+    var m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    var s = String(elapsed % 60).padStart(2, '0');
+    document.getElementById('recTimer').textContent = m + ':' + s;
+  },
+
+  pollStatus: function() {
+    if (!this.sessionId || !this._pollAbort) return;
+    var self = this;
+    var signal = this._pollAbort.signal;
+    fetch('/v1/sessions/' + this.sessionId + '/recording', { signal: signal })
+      .then(recJsonOrThrow)
+      .then(function(data) {
+        self._pollFailCount = 0;
+        var count = data.eventCount || 0;
+        document.getElementById('recEventCount').textContent = count + ' event' + (count !== 1 ? 's' : '');
+        if (count > self.lastEventCount) {
+          var stream = document.getElementById('recEventStream');
+          if (self.lastEventCount === 0) stream.innerHTML = '';
+          for (var i = self.lastEventCount; i < count; i++) {
+            var item = document.createElement('div');
+            item.className = 'rec-event-item';
+            item.innerHTML = '<span class="ev-icon">&#9679;</span>' +
+              '<span class="ev-badge click">event</span>' +
+              '<span class="ev-desc">Interaction #' + (i + 1) + '</span>' +
+              '<span class="ev-time">' + self.formatTime(Date.now()) + '</span>';
+            stream.appendChild(item);
+            stream.scrollTop = stream.scrollHeight;
+          }
+          self.lastEventCount = count;
+        }
+      })
+      .catch(function(err) {
+        if (err.name === 'AbortError') return; // expected on stop
+        self._pollFailCount++;
+        if (self._pollFailCount >= 5) {
+          self.stopPolling();
+          alert('Lost connection to recording session.');
+        }
+      });
+  },
+
+  pollScreenshot: function() {
+    if (!this.sessionId || !this._pollAbort) return;
+    var container = document.getElementById('recPreviewBody');
+    var signal = this._pollAbort.signal;
+    fetch('/v1/sessions/' + this.sessionId + '/screenshot', { signal: signal })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (data && data.image) {
+          var imgEl = document.createElement('img');
+          imgEl.src = data.image;
+          imgEl.alt = 'Live preview';
+          container.innerHTML = '';
+          container.appendChild(imgEl);
+        }
+      })
+      .catch(function() {}); // AbortError or network error — silent
+  },
+
+  renderReview: function(data) {
+    var recording = data.recording || {};
+    var events = recording.events || [];
+    var domain = data.domain || recording.domain || '-';
+    var duration = recording.endedAt && recording.startedAt
+      ? Math.round((recording.endedAt - recording.startedAt) / 1000)
+      : 0;
+    var dMin = String(Math.floor(duration / 60)).padStart(2, '0');
+    var dSec = String(duration % 60).padStart(2, '0');
+
+    // Summary
+    document.getElementById('recSummary').innerHTML =
+      '<div class="sum-item"><strong>' + esc(domain) + '</strong><br>Domain</div>' +
+      '<div class="sum-item"><strong>' + events.length + '</strong><br>Events</div>' +
+      '<div class="sum-item"><strong>' + dMin + ':' + dSec + '</strong><br>Duration</div>';
+
+    // Intent textarea — reset to loading state (summarizeIntent will fill it)
+    var textarea = document.getElementById('recIntentText');
+    textarea.value = '';
+    textarea.classList.add('loading');
+    textarea.disabled = true;
+    document.getElementById('recIntentHint').textContent = 'AI summarizing...';
+
+    // Timeline
+    var timeline = document.getElementById('recTimeline');
+    if (events.length === 0) {
+      timeline.innerHTML = '<div class="rec-empty-events"><span>No events recorded.</span></div>';
+    } else {
+      var html = '';
+      var self = this;
+      events.forEach(function(evt) {
+        html += self.renderEventItem(evt);
+      });
+      timeline.innerHTML = html;
+    }
+
+    // Patterns preview (show what will be extracted, not yet saved)
+    var patternsBody = document.getElementById('recPatternsBody');
+    var previewPatterns = extractPatternsFromEvents(events);
+
+    if (previewPatterns.length > 0) {
+      var phtml = '';
+      previewPatterns.forEach(function(p) { phtml += Rec.renderPattern(p); });
+      patternsBody.innerHTML = phtml;
+    } else {
+      patternsBody.innerHTML = '<div class="placeholder-text">No structural patterns detected.</div>';
+    }
+
+    // Reset action buttons and success area
+    document.getElementById('recSuccessArea').innerHTML = '';
+    document.getElementById('recActions').innerHTML =
+      '<button class="btn" onclick="Rec.discard()">Discard</button>' +
+      '<button class="btn btn-primary" id="recSaveBtn" onclick="Rec.saveToMemory()">Save to Memory</button>';
+  },
+
+  renderEventItem: function(evt) {
+    var icons = { navigate: '&#8599;', click: '&#9673;', type: '&#9000;', select: '&#9776;', scroll: '&#8597;' };
+    var icon = icons[evt.type] || '&#9679;';
+    var desc = '';
+    if (evt.type === 'navigate') {
+      desc = evt.url || '';
+    } else if (evt.type === 'click') {
+      desc = evt.targetLabel || evt.target || 'element';
+    } else if (evt.type === 'type') {
+      desc = (evt.targetLabel || 'input') + (evt.value ? ': ' + evt.value.slice(0, 30) : '');
+    } else if (evt.type === 'select') {
+      desc = (evt.targetLabel || 'select') + (evt.value ? ' → ' + evt.value : '');
+    } else if (evt.type === 'scroll') {
+      desc = 'scrollY: ' + (evt.value || '0');
+    }
+    return '<div class="rec-event-item">' +
+      '<span class="ev-icon">' + icon + '</span>' +
+      '<span class="ev-badge ' + esc(evt.type) + '">' + esc(evt.type) + '</span>' +
+      '<span class="ev-desc" title="' + esc(desc) + '">' + esc(desc) + '</span>' +
+      '<span class="ev-time">' + this.formatTime(evt.timestamp) + '</span>' +
+      '</div>';
+  },
+
+  renderPattern: function(p) {
+    return '<div class="rec-pattern-item">' +
+      '<span class="pat-type">' + esc(p.type) + '</span>' +
+      '<div class="pat-desc">' + esc(p.description) + '</div>' +
+      '<div class="pat-value">' + esc(p.value) + '</div>' +
+      '</div>';
+  },
+
+  formatTime: function(ts) {
+    if (!ts) return '';
+    var d = new Date(ts);
+    return String(d.getHours()).padStart(2, '0') + ':' +
+      String(d.getMinutes()).padStart(2, '0') + ':' +
+      String(d.getSeconds()).padStart(2, '0');
+  }
+};
+</script>
+
+<script>
+// ========== Welcome Banner ==========
+function dismissWelcome() {
+  document.getElementById('welcomeBanner').style.display = 'none';
+  localStorage.setItem('ai_browser_welcomed', '1');
+}
+function showWelcomeIfNeeded() {
+  if (!localStorage.getItem('ai_browser_welcomed')) {
+    document.getElementById('welcomeBanner').style.display = '';
+  }
+}
+</script>
+
+<script>
 // ========== Init ==========
 (function() {
   var hash = location.hash.replace('#', '');
-  var view = (hash === 'agent') ? 'agent' : (hash === 'tasks') ? 'tasks' : 'semantic';
+  var view = (hash === 'agent') ? 'agent' : (hash === 'tasks') ? 'tasks' : (hash === 'memory') ? 'memory' : (hash === 'record') ? 'record' : 'semantic';
   switchView(view);
   ChatStore.load();
+  showWelcomeIfNeeded();
 })();
 </script>
 </body>

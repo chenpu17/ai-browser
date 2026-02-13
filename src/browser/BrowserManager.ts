@@ -1,6 +1,11 @@
-import puppeteer, { Browser, Page } from 'puppeteer-core';
+import vanillaPuppeteer, { Browser, Page } from 'puppeteer-core';
+import { addExtra } from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+
+const puppeteer = addExtra(vanillaPuppeteer as any);
+puppeteer.use(StealthPlugin());
 
 export interface BrowserOptions {
   headless?: boolean | 'new';
@@ -60,7 +65,6 @@ export class BrowserManager {
     const args = [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-blink-features=AutomationControlled',
       '--disable-infobars',
     ];
 
@@ -132,6 +136,7 @@ export class BrowserManager {
   async newPage(options: BrowserOptions = {}): Promise<Page> {
     const browser = await this.getBrowser(options.headless);
     const page = await browser.newPage();
+
     if (options.viewport) {
       await page.setViewport(options.viewport);
     }

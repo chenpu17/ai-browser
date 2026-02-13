@@ -63,7 +63,8 @@ type ToolName =
   | 'get_runtime_profile'
   | 'fill_form'
   | 'click_and_wait'
-  | 'navigate_and_extract';
+  | 'navigate_and_extract'
+  | 'recall_site_memory';
 
 export function enrichWithAiMarkdown(toolName: string, data: unknown): unknown {
   if (!isObject(data)) return data;
@@ -142,6 +143,7 @@ function normalizeToolName(toolName: string): ToolName | null {
     'fill_form',
     'click_and_wait',
     'navigate_and_extract',
+    'recall_site_memory',
   ];
   return direct.includes(toolName as ToolName) ? (toolName as ToolName) : null;
 }
@@ -211,6 +213,8 @@ function buildAiMarkdown(toolName: ToolName, data: AnyRecord): string {
       return formatClickAndWait(data);
     case 'navigate_and_extract':
       return formatNavigateAndExtract(data);
+    case 'recall_site_memory':
+      return formatRecallSiteMemory(data);
     default:
       return '';
   }
@@ -252,7 +256,6 @@ function buildAiSummary(toolName: ToolName, data: AnyRecord): string {
     case 'type_text':
     case 'press_key':
     case 'wait':
-    case 'wait_for_stable':
     case 'scroll':
     case 'go_back':
     case 'select_option':
@@ -263,6 +266,8 @@ function buildAiSummary(toolName: ToolName, data: AnyRecord): string {
     case 'handle_dialog':
     case 'upload_file':
       return `${toolName} executed: success=${boolText(data.success)}`;
+    case 'wait_for_stable':
+      return `wait_for_stable executed: stable=${boolText(data.stable)}, networkPending=${numberOrNull(data.networkPending) ?? '-'}`;
     case 'create_tab':
       return `Created tab: ${asString(data.tabId) || 'unknown-tab'}${data.partial ? ' (partial navigation)' : ''}`;
     case 'list_tabs': {
@@ -323,20 +328,23 @@ function buildAiSummary(toolName: ToolName, data: AnyRecord): string {
     case 'get_runtime_profile':
       return `Runtime profile: maxConcurrentRuns=${numberOrNull(data.maxConcurrentRuns) ?? '-'}, trustLevel=${asString(data.trustLevel) || '-'}`;
     case 'fill_form': {
-      const results = Array.isArray(data.results) ? data.results : [];
+      const results = Array.isArray(data.fieldResults) ? data.fieldResults : [];
       const ok = results.filter((r: any) => r?.success).length;
       const submitOk = data.submitResult ? boolText(data.submitResult.success) : 'skipped';
       return `Form filled: ${ok}/${results.length} fields succeeded, submit=${submitOk}`;
     }
     case 'click_and_wait': {
-      const clickOk = boolText(data.clickResult?.success);
-      const waitOk = boolText(data.waitResult?.success);
-      return `Click+wait: click=${clickOk}, wait=${waitOk}`;
+      const clickOk = boolText(data.success);
+      const waitStable = boolText(data.waitResult?.stable);
+      return `Click+wait: click=${clickOk}, wait=${waitStable}`;
     }
     case 'navigate_and_extract': {
-      const navOk = boolText(data.navigateResult?.success);
-      const title = asString(data.navigateResult?.page?.title) || '-';
+      const navOk = boolText(data.navigation?.success);
+      const title = asString(data.navigation?.page?.title) || '-';
       return `Navigate+extract: nav=${navOk}, page=${title}`;
+    }
+    case 'recall_site_memory': {
+      return asString(data.aiSummary) || `recall_site_memory: found=${boolText(data.found)}`;
     }
     default:
       return `${toolName} completed`;
@@ -372,6 +380,18 @@ function buildAiHints(toolName: ToolName, data: AnyRecord): string[] {
       return ['If key information is missing, scroll and call get_page_content again.'];
     case 'find_element':
       return ['Pick the highest score candidate first; fallback to next candidate on failure.'];
+    case 'click':
+      return ['Call get_page_info after click to inspect the resulting page state.'];
+    case 'type_text':
+      return ['If the field requires submission, follow up with press_key Enter or click the submit button.'];
+    case 'press_key':
+      return ['Call get_page_info to verify the effect of the key press on the page.'];
+    case 'wait':
+      return ['After waiting, call get_page_info or get_page_content to inspect the updated page.'];
+    case 'wait_for_stable':
+      return data.stable
+        ? ['Page is stable; proceed with get_page_info to inspect elements.']
+        : ['Page did not stabilize; consider increasing timeout or checking for dynamic content.'];
     case 'scroll':
       return ['After scrolling, call get_page_info or get_page_content to refresh visible information.'];
     case 'go_back':
@@ -460,6 +480,10 @@ function buildAiHints(toolName: ToolName, data: AnyRecord): string[] {
         'Review extracted content; if incomplete, call get_page_content with scroll.',
         'Use get_page_info if you need interactive elements instead of text content.',
       ];
+    case 'recall_site_memory':
+      return data.found
+        ? ['参考历史经验中的选择器和操作路径，如页面结构已变化请忽略并重新探索。']
+        : ['使用 get_page_info 探索页面结构', '使用 get_page_content 获取页面内容'];
     default:
       return [];
   }
@@ -712,7 +736,7 @@ function buildNextActions(toolName: ToolName, data: AnyRecord, detailLevel: Deta
       }
       break;
     case 'fill_form': {
-      const fieldResults = Array.isArray(data.results) ? data.results : [];
+      const fieldResults = Array.isArray(data.fieldResults) ? data.fieldResults : [];
       const failed = fieldResults.filter((r: any) => !r?.success);
       if (failed.length > 0) {
         add({ tool: 'type_text', reason: 'Retry failed fields individually with type_text', priority: 'high' });
@@ -725,15 +749,41 @@ function buildNextActions(toolName: ToolName, data: AnyRecord, detailLevel: Deta
     }
     case 'click_and_wait':
       add({ tool: 'get_page_info', reason: 'Inspect page elements after click+wait', priority: 'high' });
-      if (!data.waitResult?.success) {
-        add({ tool: 'wait_for_stable', reason: 'Wait failed; retry with explicit stability check', priority: 'medium' });
+      if (!data.waitResult?.stable) {
+        add({ tool: 'wait_for_stable', reason: 'Wait not stable; retry with explicit stability check', priority: 'medium' });
       }
       break;
     case 'navigate_and_extract':
-      if (data.extractResult?.sections?.length === 0) {
+      if (data.content?.sections?.length === 0) {
         add({ tool: 'get_page_content', reason: 'No content extracted; try scrolling and re-extracting', priority: 'high' });
       }
       add({ tool: 'get_page_info', reason: 'Inspect interactive elements if interaction is needed', priority: 'medium' });
+      break;
+    case 'recall_site_memory':
+      add({ tool: 'navigate', reason: '记忆已查询，继续导航到目标页面', priority: 'high' });
+      add({ tool: 'navigate_and_extract', reason: '如果只需提取内容，用 navigate_and_extract 更高效', priority: 'medium' });
+      break;
+    case 'click':
+      add({ tool: 'get_page_info', reason: 'Inspect page state after click', priority: 'high' });
+      if (data.newTabCreated) {
+        add({ tool: 'list_tabs', reason: 'Click opened a new tab; list tabs to manage context', priority: 'high' });
+      }
+      break;
+    case 'type_text':
+      add({ tool: 'get_page_info', reason: 'Verify input state after typing', priority: 'medium' });
+      break;
+    case 'press_key':
+      add({ tool: 'get_page_info', reason: 'Inspect page state after key press', priority: 'medium' });
+      break;
+    case 'scroll':
+      add({ tool: 'get_page_info', reason: 'Refresh visible elements after scrolling', priority: 'high' });
+      add({ tool: 'get_page_content', reason: 'Refresh visible content after scrolling', priority: 'medium' });
+      break;
+    case 'create_tab':
+      add({ tool: 'get_page_info', reason: 'Inspect elements in the new tab', priority: 'high' });
+      if (data.partial) {
+        add({ tool: 'wait_for_stable', reason: 'Tab navigation was partial; wait for stability', priority: 'high' });
+      }
       break;
     default:
       break;
@@ -1187,7 +1237,8 @@ function formatRuntimeProfile(data: AnyRecord): string {
 }
 
 function formatFillForm(data: AnyRecord): string {
-  const results = Array.isArray(data.results) ? data.results : [];
+  // Server returns fieldResults (not results)
+  const results = Array.isArray(data.fieldResults) ? data.fieldResults : [];
   const lines = [
     '## Fill Form Result',
     '',
@@ -1199,7 +1250,7 @@ function formatFillForm(data: AnyRecord): string {
   if (results.length > 0) {
     lines.push('', '| element_id | success | error |', '|---|---|---|');
     for (const r of results) {
-      const id = asString(r?.elementId) || '-';
+      const id = asString(r?.element_id) || '-';
       const ok = boolText(r?.success);
       const err = asString(r?.error) || '-';
       lines.push(`| \`${tableSafe(id)}\` | ${ok} | ${tableSafe(compactText(err, 80))} |`);
@@ -1209,10 +1260,15 @@ function formatFillForm(data: AnyRecord): string {
   if (data.submitResult) {
     lines.push('', '### Submit Result', '');
     lines.push(`- Success: ${boolText(data.submitResult.success)}`);
-    if (data.submitResult.page) {
-      lines.push(`- URL: ${asString(data.submitResult.page.url) || '-'}`);
-      lines.push(`- Title: ${asString(data.submitResult.page.title) || '-'}`);
+    if (data.submitResult.error) {
+      lines.push(`- Error: ${asString(data.submitResult.error)}`);
     }
+  }
+
+  // page is at top level
+  if (data.page) {
+    lines.push(`- URL: ${asString(data.page.url) || '-'}`);
+    lines.push(`- Title: ${asString(data.page.title) || '-'}`);
   }
 
   lines.push('', '### Recommended Next Step', '', '- Call `get_page_info` to verify form submission result.');
@@ -1220,22 +1276,27 @@ function formatFillForm(data: AnyRecord): string {
 }
 
 function formatClickAndWait(data: AnyRecord): string {
+  // Server returns flat structure: { success, waitResult: { stable, method }, page, newTabCreated?, dialog? }
   const lines = [
     '## Click and Wait Result',
     '',
-    `- Click Success: ${boolText(data.clickResult?.success)}`,
-    `- Wait Success: ${boolText(data.waitResult?.success)}`,
+    `- Click Success: ${boolText(data.success)}`,
+    `- Wait Stable: ${boolText(data.waitResult?.stable)}`,
+    `- Wait Method: ${asString(data.waitResult?.method) || '-'}`,
   ];
 
-  if (data.clickResult?.page) {
-    lines.push(`- URL: ${asString(data.clickResult.page.url) || '-'}`);
-    lines.push(`- Title: ${asString(data.clickResult.page.title) || '-'}`);
+  if (data.page) {
+    lines.push(`- URL: ${asString(data.page.url) || '-'}`);
+    lines.push(`- Title: ${asString(data.page.title) || '-'}`);
   }
-  if (data.clickResult?.newTabCreated) {
-    lines.push(`- New Tab Created: ${asString(data.clickResult.newTabCreated)}`);
+  if (data.newTabCreated) {
+    lines.push(`- New Tab Created: ${asString(data.newTabCreated)}`);
   }
-  if (data.waitResult && !data.waitResult.success) {
-    lines.push(`- Wait Reason: ${asString(data.waitResult.reason) || 'timeout or instability'}`);
+  if (data.waitResult && !data.waitResult.stable) {
+    lines.push(`- Wait Note: page may not be fully stable`);
+  }
+  if (data.dialog) {
+    lines.push(`- Pending Dialog: ${asString(data.dialog.type) || 'unknown'} — "${compactText(asString(data.dialog.message) || '', 80)}"`);
   }
 
   lines.push('', '### Recommended Next Step', '', '- Call `get_page_info` to inspect the page after click+wait.');
@@ -1248,19 +1309,20 @@ function formatNavigateAndExtract(data: AnyRecord): string {
     '',
   ];
 
-  // Navigation part
-  if (data.navigateResult) {
-    lines.push(`- Nav Success: ${boolText(data.navigateResult.success)}`);
-    lines.push(`- URL: ${asString(data.navigateResult.page?.url) || '-'}`);
-    lines.push(`- Title: ${asString(data.navigateResult.page?.title) || '-'}`);
-    if (typeof data.navigateResult.statusCode === 'number') {
-      lines.push(`- HTTP Status: ${data.navigateResult.statusCode}`);
+  // Navigation part — server returns `navigation` (not `navigateResult`)
+  const nav = data.navigation;
+  if (nav) {
+    lines.push(`- Nav Success: ${boolText(nav.success)}`);
+    lines.push(`- URL: ${asString(nav.page?.url) || '-'}`);
+    lines.push(`- Title: ${asString(nav.page?.title) || '-'}`);
+    if (typeof nav.statusCode === 'number') {
+      lines.push(`- HTTP Status: ${nav.statusCode}`);
     }
   }
 
-  // Extract part
-  if (data.extractResult) {
-    const sections = Array.isArray(data.extractResult.sections) ? data.extractResult.sections : [];
+  // Content part — server returns `content` (not `extractResult`)
+  if (data.content) {
+    const sections = Array.isArray(data.content.sections) ? data.content.sections : [];
     // Sort by attention descending so the most relevant content is shown first
     const sorted = [...sections].sort((a, b) => (numberOrNull(b?.attention) ?? 0) - (numberOrNull(a?.attention) ?? 0));
     const topSections = sorted.slice(0, 20);
@@ -1275,12 +1337,22 @@ function formatNavigateAndExtract(data: AnyRecord): string {
     }
   }
 
-  if (data.elementsResult) {
-    const elements = Array.isArray(data.elementsResult.elements) ? data.elementsResult.elements : [];
+  // Elements part — server returns `elements` (not `elementsResult`)
+  if (data.elements) {
+    const elements = Array.isArray(data.elements.elements) ? data.elements.elements : [];
     lines.push(`- Elements Found: ${elements.length}`);
   }
 
   lines.push('', '### Recommended Next Step', '', '- If content is incomplete, scroll and call `get_page_content` again.');
+  return lines.join('\n');
+}
+
+function formatRecallSiteMemory(data: AnyRecord): string {
+  if (data.found && data.context) {
+    return asString(data.context);
+  }
+  const lines = [`## 站点记忆: ${asString(data.domain) || 'unknown'}`];
+  lines.push('', '没有该站点的历史记忆。请自行探索页面结构。');
   return lines.join('\n');
 }
 
@@ -1416,7 +1488,6 @@ function formatPageContent(data: AnyRecord): string {
     '## Page Content Snapshot',
     '',
     `- Title: ${asString(data.title) || '-'}`,
-    `- URL: ${asString(data.url) || '-'}`,
     `- Sections: ${sections.length}`,
     '',
     '### Key Text Blocks',

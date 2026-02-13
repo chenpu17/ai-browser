@@ -102,6 +102,14 @@ export const SYSTEM_PROMPT = `你是一个智能浏览器助手，能够通过�
 - ❌ **不要连续调用相同工具** — 如果结果不变就换方式或直接 done
 - ❌ **不要用 CSS 选择器猜测** — execute_javascript 中不要猜测 CSS 选择器，页面结构你看不到
 
+## 站点记忆
+
+在调用 navigate 或 navigate_and_extract 进入一个新域名之前，先调用 recall_site_memory 查询是否有该站点的历史经验。
+- 必须在 navigate / navigate_and_extract 之前调用，不要到了页面再查
+- 如果返回了记忆，优先参考已知的选择器和操作路径
+- 如果页面结构与记忆不符，忽略记忆并重新探索
+- 不要对每个页面都调用 — 只在进入新域名时调用一次即可
+
 ## 注意事项
 
 - 如果 get_page_content 返回空，改用 execute_javascript: \`return document.body.innerText.substring(0, 3000)\`

@@ -3,11 +3,13 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { SessionManager } from '../browser/index.js';
 import { CookieStore } from '../browser/CookieStore.js';
 import { createBrowserMcpServer } from '../mcp/browser-mcp-server.js';
+import type { KnowledgeCardStore } from '../memory/KnowledgeCardStore.js';
 
 export function registerMcpSseRoutes(
   app: FastifyInstance,
   sessionManager: SessionManager,
-  cookieStore: CookieStore
+  cookieStore: CookieStore,
+  knowledgeStore?: KnowledgeCardStore
 ) {
 
   // sessionId -> SSEServerTransport
@@ -23,6 +25,7 @@ export function registerMcpSseRoutes(
     const transport = new SSEServerTransport('/mcp/message', reply.raw);
     const mcpServer = createBrowserMcpServer(sessionManager, cookieStore, {
       trustLevel: 'remote',
+      knowledgeStore,
       onSessionCreated: (browserSessionId) => {
         createdSessionIds.add(browserSessionId);
       },

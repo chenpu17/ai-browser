@@ -446,6 +446,7 @@ export function registerTaskTools(
         }
         return textResult({
           success: false,
+          runId,
           reason: `Run is already in terminal state: ${run.status}`,
         }, 'cancel_task_run');
       }

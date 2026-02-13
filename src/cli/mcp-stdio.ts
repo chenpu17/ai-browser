@@ -4,6 +4,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { BrowserManager, SessionManager } from '../browser/index.js';
 import { createBrowserMcpServer } from '../mcp/browser-mcp-server.js';
 import { CookieStore } from '../browser/CookieStore.js';
+import { KnowledgeCardStore } from '../memory/index.js';
 
 async function main() {
   // 将日志输出到 stderr，避免干扰 stdio 通信
@@ -16,10 +17,12 @@ async function main() {
   const sessionManager = new SessionManager(browserManager);
   const cookieStore = new CookieStore();
   sessionManager.setCookieStore(cookieStore);
+  const knowledgeStore = new KnowledgeCardStore();
 
   log('Creating MCP server...');
   const mcpServer = createBrowserMcpServer(sessionManager, cookieStore, {
     trustLevel: 'local',
+    knowledgeStore,
   });
 
   const transport = new StdioServerTransport();

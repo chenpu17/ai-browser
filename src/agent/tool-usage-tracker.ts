@@ -56,14 +56,17 @@ export class ToolUsageTracker {
    * Detect A->B->A->B oscillation pattern.
    */
   detectOscillation(windowSize = 6): LoopDetection | null {
-    if (this.history.length < windowSize) return null;
-    const recent = this.history.slice(-windowSize);
+    if (windowSize < 4) return null;
+    // Use even window size for symmetric A-B pattern detection
+    const effectiveWindow = windowSize % 2 === 0 ? windowSize : windowSize - 1;
+    if (this.history.length < effectiveWindow) return null;
+    const recent = this.history.slice(-effectiveWindow);
     // Check for A-B-A-B pattern (period=2)
     const sigA = this.callSignature(recent[0]);
     const sigB = this.callSignature(recent[1]);
     if (sigA === sigB) return null;
     let isOscillating = true;
-    for (let i = 0; i < windowSize; i++) {
+    for (let i = 0; i < effectiveWindow; i++) {
       const expected = i % 2 === 0 ? sigA : sigB;
       if (this.callSignature(recent[i]) !== expected) {
         isOscillating = false;

@@ -19,6 +19,10 @@ import { RunManager } from '../task/run-manager.js';
 import { ArtifactStore } from '../task/artifact-store.js';
 import { registerTaskTools } from './task-tools.js';
 import { enrichWithAiMarkdown } from './ai-markdown.js';
+import type { KnowledgeCardStore } from '../memory/KnowledgeCardStore.js';
+import { isSafeDomain } from '../memory/KnowledgeCardStore.js';
+import { MemoryCapturer } from '../memory/MemoryCapturer.js';
+import { MemoryInjector } from '../memory/MemoryInjector.js';
 
 // Re-export TrustLevel and ErrorCode from canonical locations
 export type { TrustLevel } from '../task/tool-context.js';
@@ -34,6 +38,7 @@ export interface BrowserMcpServerOptions {
   /** @deprecated Use trustLevel instead */
   urlValidation?: ValidateUrlOptions;
   onSessionCreated?: (sessionId: string) => void;
+  knowledgeStore?: KnowledgeCardStore;
 }
 
 export function createBrowserMcpServer(sessionManager: SessionManager, cookieStore?: CookieStore, options?: BrowserMcpServerOptions): McpServer {
@@ -745,7 +750,8 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       const switched = sessionManager.switchTab(sessionId, tabId);
       if (!switched) throw new Error(`Tab not found: ${tabId}`);
       sessionManager.updateActivity(sessionId);
-      const tab = sessionManager.getActiveTab(sessionId)!;
+      const tab = sessionManager.getActiveTab(sessionId);
+      if (!tab) throw new Error(`Active tab not available after switch: ${tabId}`);
       return textResult({
         success: true,
         page: { url: tab.page.url(), title: await tab.page.title() },
@@ -1223,6 +1229,12 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       const sessionId = await resolveSession(rawSessionId);
       const tab = getActiveTab(sessionId);
       const waitType = waitFor || 'stable';
+      if (!['stable', 'navigation', 'selector'].includes(waitType)) {
+        throw invalidParameterError(`Invalid waitFor value: ${waitType}. Must be stable, navigation, or selector`);
+      }
+      if (waitType === 'selector' && !selector) {
+        throw invalidParameterError('selector parameter is required when waitFor=selector');
+      }
 
       // Click
       await executeAction(tab.page, 'click', element_id);
@@ -1284,6 +1296,9 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
     safe(async ({ sessionId: rawSessionId, url, extract }) => {
       const sessionId = await resolveSession(rawSessionId);
       const extractType = extract || 'content';
+      if (!['content', 'elements', 'both'].includes(extractType)) {
+        throw invalidParameterError(`Invalid extract value: ${extractType}. Must be content, elements, or both`);
+      }
 
       // Navigate
       const navResult = await toolActions.navigate(toolCtx, sessionId, url);
@@ -1302,6 +1317,62 @@ export function createBrowserMcpServer(sessionManager: SessionManager, cookieSto
       return textResult(result, 'navigate_and_extract');
     })
   );
+
+  // ===== Memory Tools =====
+  const knowledgeStore = options?.knowledgeStore;
+  if (knowledgeStore) {
+    server.tool(
+      'recall_site_memory',
+      '查询站点记忆。在调用 navigate 或 navigate_and_extract 进入新域名之前，先调用此工具获取该站点的历史经验（已知选择器、导航路径、操作流程等）。如果没有记忆则返回空，你需要自行探索。',
+      {
+        domain: z.string().optional().describe('目标站点域名，如 bilibili.com、jd.com'),
+        url: z.string().optional().describe('目标 URL（可选），自动提取域名'),
+        task_hint: z.string().optional().describe('当前要执行的任务简述（可选），用于筛选最相关的记忆条目'),
+      },
+      safe(async ({ domain, url, task_hint }: { domain?: string; url?: string; task_hint?: string }) => {
+        if (!domain && !url) {
+          throw invalidParameterError('domain or url is required');
+        }
+
+        let resolvedDomain: string | null = null;
+        if (url) {
+          resolvedDomain = MemoryCapturer.extractDomain(url);
+        } else if (domain) {
+          if (isSafeDomain(domain)) resolvedDomain = domain;
+        }
+
+        if (!resolvedDomain) {
+          throw invalidParameterError('Could not resolve a valid domain from the provided input');
+        }
+
+        const card = knowledgeStore.loadCard(resolvedDomain);
+        if (!card) {
+          return textResult({
+            found: false,
+            domain: resolvedDomain,
+            aiSummary: `没有 ${resolvedDomain} 的站点记忆。请自行探索页面结构。`,
+            aiHints: ['使用 get_page_info 探索页面结构', '使用 get_page_content 获取页面内容'],
+          }, 'recall_site_memory');
+        }
+
+        const truncatedHint = task_hint ? task_hint.slice(0, 200) : undefined;
+        const context = MemoryInjector.buildContext(card, 2000, truncatedHint);
+        const patternTypes = MemoryInjector.countPatternTypes(card.patterns);
+        const patternCount = card.patterns.length;
+
+        return textResult({
+          found: true,
+          domain: resolvedDomain,
+          siteType: card.siteType || 'unknown',
+          requiresLogin: card.requiresLogin || false,
+          patternCount,
+          patternTypes,
+          context,
+          aiSummary: `已找到 ${resolvedDomain} 的站点记忆（${patternCount} 条模式：${Object.entries(patternTypes).map(([k, v]) => `${v} ${k}`).join(', ')}）。请参考历史经验操作，如页面结构已变化请忽略。`,
+        }, 'recall_site_memory');
+      })
+    );
+  }
 
   // ===== Task Template Tools (delegated to task-tools.ts) =====
   registerTaskTools(server, toolCtx, runManager, artifactStore, isRemote, safe, resolveSession, createIsolatedSession);

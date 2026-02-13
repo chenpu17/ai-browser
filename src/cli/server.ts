@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { BrowserManager, SessionManager, CookieStore } from '../browser/index.js';
 import { registerRoutes, ApiError } from '../api/index.js';
 import { registerMcpSseRoutes } from '../api/mcp-sse.js';
+import { KnowledgeCardStore } from '../memory/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -33,10 +34,21 @@ async function main() {
   const cookieStore = new CookieStore();
   sessionManager.setCookieStore(cookieStore);
 
-  // 静态文件服务
+  // 站点记忆存储
+  const knowledgeStore = new KnowledgeCardStore();
+
+  // 静态文件服务 (disable caching for HTML to ensure latest UI)
   await app.register(fastifyStatic, {
     root: path.join(__dirname, '../../public'),
     prefix: '/',
+    cacheControl: false,
+  });
+  app.addHook('onSend', (request, reply, payload, done) => {
+    const url = request.url;
+    if (url === '/' || url.endsWith('.html')) {
+      reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+    done();
   });
 
   // 错误处理
@@ -55,10 +67,10 @@ async function main() {
   });
 
   // 注册 REST API 路由
-  registerRoutes(app, sessionManager, cookieStore);
+  registerRoutes(app, sessionManager, cookieStore, knowledgeStore);
 
   // 注册 SSE MCP 端点
-  registerMcpSseRoutes(app, sessionManager, cookieStore);
+  registerMcpSseRoutes(app, sessionManager, cookieStore, knowledgeStore);
 
   // 优先级: --port > PORT 环境变量 > 默认值
   const portStr = typeof args.port === 'string' ? args.port : process.env.PORT;
@@ -80,6 +92,7 @@ async function main() {
     app.log.info('Shutting down...');
     await sessionManager.closeAll();
     cookieStore.dispose();
+    knowledgeStore.dispose();
     await browserManager.close();
     await app.close();
     process.exit(0);

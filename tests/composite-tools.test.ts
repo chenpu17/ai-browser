@@ -5,11 +5,12 @@ describe('Composite Tools - ai-markdown', () => {
   describe('fill_form', () => {
     it('enriches fill_form result with aiMarkdown', () => {
       const data = {
-        results: [
-          { elementId: 'input_name', success: true },
-          { elementId: 'input_email', success: false, error: 'Element not found' },
+        fieldResults: [
+          { element_id: 'input_name', success: true },
+          { element_id: 'input_email', success: false, error: 'Element not found' },
         ],
-        submitResult: { success: true, page: { url: 'https://example.com/done', title: 'Done' } },
+        submitResult: { success: true },
+        page: { url: 'https://example.com/done', title: 'Done' },
       };
       const enriched = enrichWithAiMarkdown('fill_form', data) as any;
       expect(enriched.aiMarkdown).toContain('Fill Form Result');
@@ -22,8 +23,8 @@ describe('Composite Tools - ai-markdown', () => {
 
     it('generates nextActions for failed fields', () => {
       const data = {
-        results: [
-          { elementId: 'input_1', success: false, error: 'not found' },
+        fieldResults: [
+          { element_id: 'input_1', success: false, error: 'not found' },
         ],
       };
       const enriched = enrichWithAiMarkdown('fill_form', data) as any;
@@ -34,20 +35,21 @@ describe('Composite Tools - ai-markdown', () => {
   describe('click_and_wait', () => {
     it('enriches click_and_wait result with aiMarkdown', () => {
       const data = {
-        clickResult: { success: true, page: { url: 'https://example.com', title: 'Home' } },
-        waitResult: { success: true },
+        success: true,
+        waitResult: { stable: true, method: 'stable' },
+        page: { url: 'https://example.com', title: 'Home' },
       };
       const enriched = enrichWithAiMarkdown('click_and_wait', data) as any;
       expect(enriched.aiMarkdown).toContain('Click and Wait Result');
       expect(enriched.aiMarkdown).toContain('Click Success: yes');
-      expect(enriched.aiMarkdown).toContain('Wait Success: yes');
+      expect(enriched.aiMarkdown).toContain('Wait Stable: yes');
       expect(enriched.aiSummary).toContain('click=yes');
     });
 
-    it('suggests wait_for_stable when wait fails', () => {
+    it('suggests wait_for_stable when wait is not stable', () => {
       const data = {
-        clickResult: { success: true },
-        waitResult: { success: false, reason: 'timeout' },
+        success: true,
+        waitResult: { stable: false, method: 'navigation' },
       };
       const enriched = enrichWithAiMarkdown('click_and_wait', data) as any;
       expect(enriched.nextActions.some((a: any) => a.tool === 'wait_for_stable')).toBe(true);
@@ -57,12 +59,12 @@ describe('Composite Tools - ai-markdown', () => {
   describe('navigate_and_extract', () => {
     it('enriches navigate_and_extract result with aiMarkdown', () => {
       const data = {
-        navigateResult: {
+        navigation: {
           success: true,
           page: { url: 'https://example.com', title: 'Example' },
           statusCode: 200,
         },
-        extractResult: {
+        content: {
           sections: [
             { text: 'Hello world' },
             { text: 'More content here' },
@@ -78,8 +80,8 @@ describe('Composite Tools - ai-markdown', () => {
 
     it('suggests get_page_content when no sections extracted', () => {
       const data = {
-        navigateResult: { success: true, page: { url: 'https://example.com', title: 'X' } },
-        extractResult: { sections: [] },
+        navigation: { success: true, page: { url: 'https://example.com', title: 'X' } },
+        content: { sections: [] },
       };
       const enriched = enrichWithAiMarkdown('navigate_and_extract', data) as any;
       expect(enriched.nextActions.some((a: any) => a.tool === 'get_page_content')).toBe(true);

@@ -8,7 +8,7 @@ This is an AI-friendly browser automation service that provides semantic web pag
 
 - **CLI Layer** (`src/cli/`): Entry points — HTTP server (`ai-browser`) and stdio MCP (`ai-browser-mcp`)
 - **API Layer** (`src/api/`): Fastify HTTP server with REST API and SSE MCP endpoint
-- **MCP Layer** (`src/mcp/`): Browser tools exposed via MCP protocol (38 tools: 28 browser primitives + 3 composite tools + 7 task-runtime tools — navigate, click, type, screenshot, fill_form, click_and_wait, navigate_and_extract, template run/query, artifact retrieval, etc.)
+- **MCP Layer** (`src/mcp/`): Browser tools exposed via MCP protocol (39 tools: 28 browser primitives + 3 composite tools + 1 memory tool + 7 task-runtime tools — navigate, click, type, screenshot, fill_form, click_and_wait, navigate_and_extract, recall_site_memory, template run/query, artifact retrieval, etc.)
 - **Agent Layer** (`src/agent/`): LLM-driven autonomous browsing agent with tool calling, conversation memory management, progress estimation, error recovery, loop detection, and token tracking
 - **Semantic Layer** (`src/semantic/`): Accessibility tree analysis, content extraction, element matching
 - **Browser Layer** (`src/browser/`): Puppeteer-based browser management with multi-tab sessions, cookie store
@@ -55,7 +55,9 @@ npm test         # Run tests
 - `GET /v1/sessions/:id/tabs` - List tabs
 - `POST /v1/sessions/:id/tabs/batch-content` - Get content from multiple tabs
 
-## MCP Tools (28)
+## MCP Tools (39)
+
+### Browser Primitives (28)
 
 | Tool | Description |
 |------|-------------|
@@ -87,6 +89,32 @@ npm test         # Run tests
 | `get_console_logs` | Get console logs (filter by level) |
 | `upload_file` | Upload a file to a file input element |
 | `get_downloads` | Get downloaded files list |
+
+### Composite Tools (3)
+
+| Tool | Description |
+|------|-------------|
+| `fill_form` | Fill multiple form fields and optionally submit in one call |
+| `click_and_wait` | Click an element then wait for stable/navigation/selector |
+| `navigate_and_extract` | Navigate to URL and extract content/elements in one call |
+
+### Memory Tools (1)
+
+| Tool | Description |
+|------|-------------|
+| `recall_site_memory` | Query site memory for a domain before navigating (returns known selectors, navigation paths, task intents) |
+
+### Task Runtime Tools (7)
+
+| Tool | Description |
+|------|-------------|
+| `list_task_templates` | List available deterministic task templates |
+| `run_task_template` | Run a template in sync/async/auto mode |
+| `get_task_run` | Query run status, progress, result, and artifact refs |
+| `list_task_runs` | List runs with pagination and filters |
+| `cancel_task_run` | Cancel an active run |
+| `get_artifact` | Read run artifacts by chunks |
+| `get_runtime_profile` | Get runtime limits and profile info |
 
 ## Data Flow & Consumer Contract
 

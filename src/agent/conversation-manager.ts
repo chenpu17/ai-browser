@@ -44,16 +44,23 @@ export class ConversationManager {
       }
     }
 
-    // Strip trailing assistant message with tool_calls if no matching tool results follow
+    // Strip trailing orphaned messages: assistant with tool_calls lacking results,
+    // or tool messages without a matching assistant tool_calls (matched by tool_call_id).
     while (filtered.length > 0) {
       const last = filtered[filtered.length - 1];
       if (last.role === 'assistant' && 'tool_calls' in last && last.tool_calls?.length) {
         filtered.pop();
       } else if (last.role === 'tool') {
-        // Check if there's a matching assistant tool_calls before this tool message
-        const hasMatchingAssistant = filtered.some(
-          (m, idx) => idx < filtered.length - 1 && m.role === 'assistant' && 'tool_calls' in m,
-        );
+        const toolCallId = 'tool_call_id' in last ? (last as any).tool_call_id : undefined;
+        const hasMatchingAssistant = toolCallId
+          ? filtered.some(
+              (m, idx) =>
+                idx < filtered.length - 1 &&
+                m.role === 'assistant' &&
+                Array.isArray((m as any).tool_calls) &&
+                (m as any).tool_calls.some((tc: any) => tc?.id === toolCallId),
+            )
+          : false;
         if (!hasMatchingAssistant) filtered.pop();
         else break;
       } else {
@@ -125,7 +132,15 @@ export class ConversationManager {
     if (this.messages.length <= this.keepRecent + 1) return;
 
     const systemMsg = this.messages[0]; // always keep system prompt
-    const recentStart = this.messages.length - this.keepRecent;
+    let recentStart = this.messages.length - this.keepRecent;
+
+    // Adjust split point to avoid breaking tool_calls + tool message groups.
+    // If recentStart lands on a 'tool' message, walk backwards to include
+    // the matching assistant message with tool_calls.
+    while (recentStart > 1 && this.messages[recentStart].role === 'tool') {
+      recentStart--;
+    }
+
     const middleMessages = this.messages.slice(1, recentStart);
     const recentMessages = this.messages.slice(recentStart);
 
@@ -146,9 +161,10 @@ export class ConversationManager {
     while (i < messages.length) {
       const msg = messages[i];
 
-      if (msg.role === 'assistant' && 'tool_calls' in msg && msg.tool_calls) {
+      if (msg.role === 'assistant' && Array.isArray((msg as any).tool_calls) && (msg as any).tool_calls.length > 0) {
         // Group assistant tool_calls with their tool results
-        const toolNames = msg.tool_calls.map((tc: any) => tc.function?.name || 'unknown');
+        const toolNames = (msg as any).tool_calls.map((tc: any) => tc?.function?.name).filter(Boolean);
+        if (toolNames.length === 0) toolNames.push('unknown');
         const thinking = typeof msg.content === 'string' && msg.content ? msg.content : '';
 
         // Collect subsequent tool results

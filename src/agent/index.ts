@@ -4,6 +4,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { BrowserManager, SessionManager } from '../browser/index.js';
 import { createBrowserMcpServer } from '../mcp/browser-mcp-server.js';
 import { BrowsingAgent } from './agent-loop.js';
+import { KnowledgeCardStore } from '../memory/index.js';
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -38,6 +39,7 @@ async function main() {
   const browserManager = new BrowserManager();
   await browserManager.launch();
   const sessionManager = new SessionManager(browserManager);
+  const knowledgeStore = new KnowledgeCardStore();
 
   while (true) {
     const input = await prompt();
@@ -49,13 +51,16 @@ async function main() {
     }
 
     // Create MCP Server + Client for this run
-    const mcpServer = createBrowserMcpServer(sessionManager);
+    const mcpServer = createBrowserMcpServer(sessionManager, undefined, {
+      trustLevel: 'local',
+      knowledgeStore,
+    });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await mcpServer.connect(serverTransport);
     const mcpClient = new Client({ name: 'cli-agent', version: '0.1.0' });
     await mcpClient.connect(clientTransport);
 
-    const agent = new BrowsingAgent({ mcpClient });
+    const agent = new BrowsingAgent({ mcpClient, knowledgeStore });
     currentAgent = agent;
     let result;
     try {

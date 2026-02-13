@@ -145,8 +145,9 @@ import {
 
 ## MCP 工具
 
-当前服务共暴露 **35 个 MCP 工具**：
+当前服务共暴露 **38 个 MCP 工具**：
 - **28 个浏览器原子工具**（导航、交互、标签页、日志、上传下载等）
+- **3 个复合工具**（多步操作合并为一次调用）
 - **7 个任务运行时工具**（模板执行、运行状态、产物读取）
 
 大多数浏览器工具支持可选 `sessionId` — 不传时自动创建/复用默认会话。
@@ -235,6 +236,14 @@ import {
 |------|------|
 | `upload_file` | 上传文件到 file input 元素（**仅 local 模式可用**） |
 | `get_downloads` | 获取已下载文件列表 |
+
+### 复合工具（减少调用次数）
+
+| 工具 | 说明 |
+|------|------|
+| `fill_form` | 一次填写多个表单字段并可选提交（输入 `fields: [{ element_id, value }]`，可选 `submit`） |
+| `click_and_wait` | 点击元素后自动等待页面稳定或导航完成（输入 `element_id` + `waitFor: 'stable'\|'navigation'\|'selector'`） |
+| `navigate_and_extract` | 导航到 URL 后立即提取内容（输入 `url` + `extract: 'content'\|'elements'\|'both'`） |
 
 ### 任务运行时（无 LLM 模板）
 

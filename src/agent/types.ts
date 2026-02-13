@@ -51,4 +51,5 @@ export type AgentEvent =
   | { type: 'error'; message: string; iteration: number }
   | { type: 'progress'; progress: ProgressInfo; iteration: number }
   | { type: 'subgoal_completed'; subGoal: string; iteration: number }
-  | { type: 'input_required'; requestId: string; question: string; fields: InputField[] };
+  | { type: 'input_required'; requestId: string; question: string; fields: InputField[] }
+  | { type: 'memory_recall'; domain: string; patternCount: number; context: string; iteration: number };
