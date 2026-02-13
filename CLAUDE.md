@@ -1,142 +1,109 @@
-# AI Browser - MCP Service for AI-Friendly Web Browsing
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-This is an AI-friendly browser automation service that provides semantic web page analysis via HTTP API. It's designed to help AI agents browse and interact with web pages efficiently.
+AI-friendly browser automation service providing semantic web page analysis via HTTP API and MCP protocol. Helps AI agents browse and interact with web pages using accessibility-tree-based semantic element IDs.
+
+## Build & Development Commands
+
+```bash
+npm install                # Install dependencies
+npm run build              # TypeScript compilation (tsc)
+npm run dev                # Dev server with watch (tsx watch, port 3000)
+npm run start              # Production server (node dist/)
+npm test                   # Run tests in watch mode (vitest)
+npm run test:run           # Run tests once
+npm run test:contract      # Run contract tests (login-keep-session, task-tools)
+npm run agent              # Run standalone agent (tsx src/agent/index.ts)
+npm run lint               # ESLint
+```
+
+Single test file: `npx vitest run tests/<filename>.test.ts`
 
 ## Architecture
 
-- **CLI Layer** (`src/cli/`): Entry points — HTTP server (`ai-browser`) and stdio MCP (`ai-browser-mcp`)
-- **API Layer** (`src/api/`): Fastify HTTP server with REST API and SSE MCP endpoint
-- **MCP Layer** (`src/mcp/`): Browser tools exposed via MCP protocol (39 tools: 28 browser primitives + 3 composite tools + 1 memory tool + 7 task-runtime tools — navigate, click, type, screenshot, fill_form, click_and_wait, navigate_and_extract, recall_site_memory, template run/query, artifact retrieval, etc.)
-- **Agent Layer** (`src/agent/`): LLM-driven autonomous browsing agent with tool calling, conversation memory management, progress estimation, error recovery, loop detection, and token tracking
-- **Semantic Layer** (`src/semantic/`): Accessibility tree analysis, content extraction, element matching
-- **Browser Layer** (`src/browser/`): Puppeteer-based browser management with multi-tab sessions, cookie store
+8-layer stack, each layer only depends on layers below it:
+
+- **CLI Layer** (`src/cli/`): Two entry points — `server.ts` (HTTP server, bin: `ai-browser`) and `mcp-stdio.ts` (stdio MCP, bin: `ai-browser-mcp`)
+- **API Layer** (`src/api/`): Fastify HTTP server with REST routes (`routes.ts`, 45KB) and SSE MCP transport (`mcp-sse.ts`)
+- **MCP Layer** (`src/mcp/`): ~39 tools registered in `browser-mcp-server.ts` via `server.tool()` (28 browser primitives + 3 composite + 7 task-runtime; `recall_site_memory` conditionally registered when `knowledgeStore` is provided). AI-optimized output formatting in `ai-markdown.ts`. Task runtime tools in `task-tools.ts`
+- **Agent Layer** (`src/agent/`): LLM-driven autonomous browsing. `BrowsingAgent` in `agent-loop.ts` runs think→tool_call→result loop. `TaskAgent` in `task-agent.ts` runs deterministic (non-LLM) task templates
+- **Memory Layer** (`src/memory/`): Site memory system — `KnowledgeCardStore` persists selectors/navigation paths per domain, `SessionRecorder` captures interactions, `MemoryInjector` injects recalled context into agent
+- **Task Layer** (`src/task/`): Deterministic task templates (`templates/` dir) with `RunManager`, artifact storage, cancellation support
+- **Semantic Layer** (`src/semantic/`): Chrome Accessibility Tree (CDP) analysis. `ElementCollector` extracts elements, each gets a semantic ID (`{prefix}_{label}_{backendNodeId}`), injected into DOM as `data-semantic-id`
+- **Browser Layer** (`src/browser/`): Puppeteer-extra with stealth plugin. `BrowserManager` manages headless/headful instances. `SessionManager` handles sessions (max 20 tabs each). `CookieStore` persists cookies across domains via CDP
+
+### Bootstrap Flow (HTTP server)
+
+1. Launch `BrowserManager` → 2. Create `SessionManager` → 3. Create `CookieStore` + `KnowledgeCardStore` → 4. Create MCP server via `createBrowserMcpServer()` → 5. Register Fastify routes + SSE MCP → 6. Listen
+
+### Data Flow — MCP Tool Results
+
+Two parallel consumer paths for MCP tool responses:
+
+1. **LLM path**: `agent-loop.ts` → `content-budget.ts` (`formatToolResult`) → conversation messages
+2. **Web UI path**: `agent-loop.ts` → SSE `tool_result` event → `public/index.html` (`formatMdResult`)
+
+Display priority: `aiMarkdown` > `aiSummary` > manual formatting > raw JSON.
+
+When MCP output format changes, update both `src/agent/content-budget.ts` and `public/index.html`.
 
 ## Key Concepts
 
-### Sessions and Tabs
-- Each session contains multiple tabs (like browser windows)
-- Sessions have expiration and auto-cleanup
-- Max 20 tabs per session
-- All tools accept optional `sessionId`; omitting it auto-creates/reuses a default session
-
-### Structured Error Codes
-- Error responses include `errorCode` field: `ELEMENT_NOT_FOUND`, `NAVIGATION_TIMEOUT`, `SESSION_NOT_FOUND`, `PAGE_CRASHED`, `INVALID_PARAMETER`, `EXECUTION_ERROR`
-
-### Semantic Elements
-- Elements are identified by semantic IDs (e.g., `btn_Submit_123`, `link_News_456`)
-- IDs are injected into DOM via `data-semantic-id` attribute
-- Elements can be interacted with using these IDs
+### Semantic Element IDs
+- Elements identified by IDs like `btn_Submit_123`, `link_News_456`
+- Generated as `{prefix}_{label}_{backendNodeId}` in `semantic/ElementCollector.ts` (role mapped to prefix, e.g. `button`→`btn`, `textbox`→`input`)
+- Injected into DOM via `data-semantic-id` attribute
+- All interaction tools (click, type, hover, etc.) use these IDs
 
 ### Trust Levels
-- `TrustLevel` (`'local'` | `'remote'`) controls security policies per entry point
-- `local`: stdio MCP + Agent API — allows `file:` URLs, no private IP blocking
-- `remote`: SSE MCP — blocks private IPs, DNS rebinding check, disables `upload_file` and `execute_javascript`
+- `TrustLevel` (`'local'` | `'remote'`) controls security per entry point
+- `local` (stdio MCP + Agent): allows `file:` URLs, no private IP blocking
+- `remote` (SSE MCP): blocks private IPs, DNS rebinding check, disables `upload_file` and `execute_javascript`
+
+### Sessions and Tabs
+- Sessions auto-expire and auto-cleanup; max 20 tabs per session
+- All tools accept optional `sessionId`; omitting it auto-creates/reuses a default session
 - SSE connections track created sessions and clean up headless sessions on disconnect
 
-## Development
+### AI Markdown Enrichment
+- `enrichWithAiMarkdown(toolName, data)` in `src/mcp/ai-markdown.ts` adds AI-friendly fields to tool responses
+- Fields: `aiSchemaVersion`, `aiDetailLevel`, `aiSummary`, `aiMarkdown`, `aiHints`, `nextActions`, `deltaSummary`
+- Detail level controlled by `AI_MARKDOWN_DETAIL_LEVEL` env var (brief/normal/full)
 
-```bash
-npm install      # Install dependencies
-npm run build    # Build TypeScript
-npm run dev      # Start dev server
-npm test         # Run tests
-```
+### Structured Error Codes
+- Error responses include `errorCode`: `ELEMENT_NOT_FOUND`, `NAVIGATION_TIMEOUT`, `SESSION_NOT_FOUND`, `PAGE_CRASHED`, `INVALID_PARAMETER`, `EXECUTION_ERROR`
 
-## API Endpoints
+## Environment Variables
 
-- `POST /v1/sessions` - Create session
-- `GET /v1/sessions/:id/semantic` - Get semantic elements
-- `POST /v1/sessions/:id/action` - Execute action (click, type, scroll, hover, select)
-- `GET /v1/sessions/:id/screenshot` - Take screenshot
-- `GET /v1/sessions/:id/content` - Extract page content
-- `POST /v1/sessions/:id/tabs` - Create new tab
-- `GET /v1/sessions/:id/tabs` - List tabs
-- `POST /v1/sessions/:id/tabs/batch-content` - Get content from multiple tabs
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3000` | HTTP server port |
+| `HOST` | `127.0.0.1` | HTTP server host |
+| `HEADLESS` | `true` | Set `false` for headful browser |
+| `CHROME_PATH` | (auto) | Custom Chrome executable path |
+| `PROXY_SERVER` | — | Proxy server URL |
+| `LLM_API_KEY` | — | OpenAI-compatible API key for agent |
+| `LLM_BASE_URL` | — | OpenAI-compatible base URL |
+| `LLM_MODEL` | — | Model name for agent |
+| `AI_MARKDOWN_DETAIL_LEVEL` | `normal` | AI output detail: brief/normal/full |
+| `AI_MARKDOWN_ADAPTIVE_POLICY` | — | Adaptive detail policy |
 
-## MCP Tools (39)
+## Testing
 
-### Browser Primitives (28)
-
-| Tool | Description |
-|------|-------------|
-| `create_session` | Create a browser session |
-| `close_session` | Close a browser session |
-| `navigate` | Open a URL (returns statusCode, detects dialogs) |
-| `get_page_info` | Get interactive elements (supports maxElements, visibleOnly, includes stability/dialog info) |
-| `get_page_content` | Extract page text (supports maxLength) |
-| `find_element` | Fuzzy search for elements |
-| `click` | Click an element by semantic ID (captures popup windows as new tabs) |
-| `type_text` | Type text into an input |
-| `press_key` | Press keyboard keys, supports modifier combos (Ctrl+A, Shift+Tab) |
-| `scroll` | Scroll the page |
-| `go_back` | Navigate back |
-| `wait` | Wait for condition (time, selector, networkidle, element_hidden) |
-| `screenshot` | Take a page screenshot (supports fullPage, element, format/quality) |
-| `hover` | Hover over an element |
-| `select_option` | Select a dropdown option |
-| `set_value` | Set element value directly (for rich text editors, contenteditable) |
-| `execute_javascript` | Execute JavaScript on the page |
-| `create_tab` | Create a new tab |
-| `list_tabs` | List all tabs |
-| `switch_tab` | Switch active tab |
-| `close_tab` | Close a tab |
-| `handle_dialog` | Handle page dialogs (accept/dismiss alert, confirm, prompt) |
-| `get_dialog_info` | Get pending dialog and dialog history |
-| `wait_for_stable` | Wait for DOM stability (no mutations + no pending network) |
-| `get_network_logs` | Get network request logs (filter by xhr, failed, slow, urlPattern) |
-| `get_console_logs` | Get console logs (filter by level) |
-| `upload_file` | Upload a file to a file input element |
-| `get_downloads` | Get downloaded files list |
-
-### Composite Tools (3)
-
-| Tool | Description |
-|------|-------------|
-| `fill_form` | Fill multiple form fields and optionally submit in one call |
-| `click_and_wait` | Click an element then wait for stable/navigation/selector |
-| `navigate_and_extract` | Navigate to URL and extract content/elements in one call |
-
-### Memory Tools (1)
-
-| Tool | Description |
-|------|-------------|
-| `recall_site_memory` | Query site memory for a domain before navigating (returns known selectors, navigation paths, task intents) |
-
-### Task Runtime Tools (7)
-
-| Tool | Description |
-|------|-------------|
-| `list_task_templates` | List available deterministic task templates |
-| `run_task_template` | Run a template in sync/async/auto mode |
-| `get_task_run` | Query run status, progress, result, and artifact refs |
-| `list_task_runs` | List runs with pagination and filters |
-| `cancel_task_run` | Cancel an active run |
-| `get_artifact` | Read run artifacts by chunks |
-| `get_runtime_profile` | Get runtime limits and profile info |
-
-## Data Flow & Consumer Contract
-
-MCP tool responses flow through two parallel consumer paths:
-
-1. **LLM path**: `agent-loop.ts` → `content-budget.ts` (`formatToolResult`) → conversation messages
-2. **Web UI path**: `agent-loop.ts` → SSE `tool_result` event (`summary: rawText`) → `public/index.html`
-
-Both paths receive the full MCP JSON (including `aiMarkdown`, `aiSummary`, `aiHints`, etc.). When MCP output format changes (e.g., new AI-optimized fields), **all downstream consumers must be updated**:
-
-- `src/agent/content-budget.ts` — LLM consumption
-- `public/index.html` (`formatMdResult`) — Web UI rendering
-
-Priority for displaying tool results: `aiMarkdown` > `aiSummary` > manual formatting > raw JSON.
+- Framework: Vitest with `globals: true`, Node environment
+- Tests in `tests/` directory, fixtures in `tests/fixtures/`
+- Uses `InMemoryTransport` for MCP testing
+- Key test files: `mcp.test.ts` (comprehensive MCP tool tests), `agent-loop.test.ts`, `browser.test.ts`, `integration.test.ts`
 
 ## Code Style
 
-- TypeScript with strict mode
-- Use async/await for all async operations
-- Handle errors gracefully with try/catch
-- Validate URLs before navigation (protocol whitelist, optional private IP blocking)
-- Use `trustLevel` instead of raw `urlValidation` options when creating MCP servers
-- Gate dangerous tools (`upload_file`, `execute_javascript`) behind `isRemote` check
+- TypeScript strict mode, ES2022 target, NodeNext module resolution
+- ESM (`"type": "module"` in package.json)
+- async/await for all async operations
+- Use `trustLevel` parameter (not raw `urlValidation`) when creating MCP servers
 - Use `validateUrlAsync` for navigation in remote mode (DNS rebinding protection)
 - Cookie store is shared across all sessions — do not filter by domain (preserves cross-domain SSO)
+- MCP tool results use `textResult()` / `errorResult()` helpers with `ErrorCode`
