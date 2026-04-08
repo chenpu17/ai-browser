@@ -16,18 +16,17 @@ export class ElementCollector {
       // Enable DOM for node resolution
       await client.send('DOM.enable');
       const { nodes } = await client.send('Accessibility.getFullAXTree');
-      const collectedNodes: CollectedNode[] = [];
-
-      for (const node of nodes) {
-        if (this.isInteractable(node)) {
-          const bounds = await this.getBounds(client, node.backendDOMNodeId);
-          const id = this.generateId(node);
-          collectedNodes.push({ node, bounds, id });
-        }
-      }
+      const interactableNodes = nodes.filter((node: any) => this.isInteractable(node));
+      const collectedNodes: CollectedNode[] = await Promise.all(
+        interactableNodes.map(async (node: any) => ({
+          node,
+          bounds: await this.getBounds(client, node.backendDOMNodeId),
+          id: this.generateId(node),
+        })),
+      );
 
       // Inject semantic IDs into DOM using page.evaluate
-      await this.injectSemanticIds(page, client, collectedNodes);
+      await this.injectSemanticIds(client, collectedNodes);
 
       return collectedNodes.map((cn) => this.toSemanticElement(cn));
     } finally {
@@ -36,36 +35,33 @@ export class ElementCollector {
   }
 
   private async injectSemanticIds(
-    page: Page,
     client: CDPSession,
     collectedNodes: CollectedNode[]
   ): Promise<void> {
-    // Build a map of backendNodeId -> semanticId
-    const nodeIdMap: Array<{ backendNodeId: number; semanticId: string }> = [];
+    const backendNodeIds: number[] = [];
+    const semanticIds: string[] = [];
     for (const { node, id } of collectedNodes) {
       if (node.backendDOMNodeId) {
-        nodeIdMap.push({ backendNodeId: node.backendDOMNodeId, semanticId: id });
+        backendNodeIds.push(node.backendDOMNodeId);
+        semanticIds.push(id);
       }
     }
+    if (backendNodeIds.length === 0) return;
 
-    // Resolve backend node IDs to object IDs and inject attributes
-    for (const { backendNodeId, semanticId } of nodeIdMap) {
-      try {
-        const { object } = await client.send('DOM.resolveNode', { backendNodeId });
-        if (object?.objectId) {
-          try {
-            await client.send('Runtime.callFunctionOn', {
-              objectId: object.objectId,
-              functionDeclaration: `function(id) { this.setAttribute('data-semantic-id', id); }`,
-              arguments: [{ value: semanticId }],
-            });
-          } finally {
-            await client.send('Runtime.releaseObject', { objectId: object.objectId }).catch(() => {});
-          }
-        }
-      } catch {
-        // Element may not be accessible
-      }
+    try {
+      const { nodeIds } = await client.send('DOM.pushNodesByBackendIdsToFrontend', { backendNodeIds });
+      await Promise.allSettled(
+        nodeIds.map((nodeId: number, index: number) => {
+          if (!nodeId) return Promise.resolve();
+          return client.send('DOM.setAttributeValue', {
+            nodeId,
+            name: 'data-semantic-id',
+            value: semanticIds[index],
+          });
+        }),
+      );
+    } catch {
+      // Element may not be accessible
     }
   }
 

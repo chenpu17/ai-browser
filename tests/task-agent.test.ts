@@ -31,6 +31,47 @@ describe('TaskAgent', () => {
     expect(plan[0].goal).toContain('探索');
   });
 
+  it('falls back to agent_goal when login template inputs are incomplete', () => {
+    const mcpClient = { callTool: vi.fn() } as any;
+    const agent = new TaskAgent({ mcpClient });
+
+    const plan = agent.plan({
+      goal: '请帮我登录 github',
+      inputs: {
+        startUrl: 'https://github.com/login',
+      },
+    });
+
+    expect(plan).toHaveLength(1);
+    expect(plan[0].type).toBe('agent_goal');
+    expect(plan[0].goal).toContain('登录');
+  });
+
+  it('uses login template when required login inputs are present', () => {
+    const mcpClient = { callTool: vi.fn() } as any;
+    const agent = new TaskAgent({ mcpClient });
+
+    const plan = agent.plan({
+      goal: '请帮我登录 github',
+      inputs: {
+        startUrl: 'https://github.com/login',
+        credentials: {
+          username: 'user',
+          password: 'secret',
+        },
+        fields: {
+          mode: 'selector',
+          usernameSelector: '#login_field',
+          passwordSelector: '#password',
+        },
+      },
+    });
+
+    expect(plan).toHaveLength(1);
+    expect(plan[0].type).toBe('template');
+    expect(plan[0].templateId).toBe('login_keep_session');
+  });
+
   it('executes template flow and verifies output schema', async () => {
     const callTool = vi.fn(async ({ name }: { name: string }) => {
       if (name === 'run_task_template') {

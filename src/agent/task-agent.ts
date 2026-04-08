@@ -114,7 +114,11 @@ export class TaskAgent extends EventEmitter {
   plan(taskSpec: TaskSpec): PlanStep[] {
     for (const rule of this.plannerRules) {
       if (!rule.match(taskSpec)) continue;
-      return [rule.buildStep(taskSpec)];
+      const step = rule.buildStep(taskSpec);
+      if (step.type === 'template' && !hasValidTemplateInputs(step.templateId, step.inputs)) {
+        continue;
+      }
+      return [step];
     }
 
     return [{
@@ -417,11 +421,13 @@ function normalizeClassifierStep(step: PlanStep | null, taskSpec: TaskSpec): Pla
 
   if (step.type === 'template') {
     if (!step.templateId) return null;
+    const normalizedInputs = step.inputs ?? taskSpec.inputs;
+    if (!hasValidTemplateInputs(step.templateId, normalizedInputs)) return null;
     return {
       id: step.id || 'step_1',
       type: 'template',
       templateId: step.templateId,
-      inputs: step.inputs ?? taskSpec.inputs,
+      inputs: normalizedInputs,
       fallbackStepIds: step.fallbackStepIds,
       dependsOn: step.dependsOn,
     };
@@ -530,6 +536,62 @@ function buildAgentGoalPrompt(taskSpec: TaskSpec, goal: string): string {
   }
 
   return sections.join('\n\n');
+}
+
+function hasValidTemplateInputs(templateId?: string, inputs?: Record<string, unknown>): boolean {
+  if (!templateId) return false;
+
+  switch (templateId) {
+    case 'batch_extract_pages':
+      return isNonEmptyUrlArray(inputs?.urls);
+    case 'multi_tab_compare':
+      return isUrlArray(inputs?.urls, 2);
+    case 'login_keep_session':
+      return hasValidLoginKeepSessionInputs(inputs);
+    default:
+      return true;
+  }
+}
+
+function isUrlArray(value: unknown, minLength: number): value is string[] {
+  return Array.isArray(value)
+    && value.length >= minLength
+    && value.every((item) => typeof item === 'string' && item.trim().length > 0);
+}
+
+function isNonEmptyUrlArray(value: unknown): value is string[] {
+  return isUrlArray(value, 1);
+}
+
+function hasValidLoginKeepSessionInputs(inputs?: Record<string, unknown>): boolean {
+  if (!inputs || typeof inputs !== 'object') return false;
+
+  const startUrl = typeof inputs.startUrl === 'string' ? inputs.startUrl.trim() : '';
+  const credentials = inputs.credentials as Record<string, unknown> | undefined;
+  const fields = inputs.fields as Record<string, unknown> | undefined;
+
+  if (!startUrl || !credentials || !fields) return false;
+
+  const username = typeof credentials.username === 'string' ? credentials.username.trim() : '';
+  const password = typeof credentials.password === 'string' ? credentials.password.trim() : '';
+  if (!username || !password) return false;
+
+  const mode = fields.mode;
+  if (mode === 'selector') {
+    return typeof fields.usernameSelector === 'string'
+      && fields.usernameSelector.trim().length > 0
+      && typeof fields.passwordSelector === 'string'
+      && fields.passwordSelector.trim().length > 0;
+  }
+
+  if (mode === 'semantic') {
+    return typeof fields.usernameQuery === 'string'
+      && fields.usernameQuery.trim().length > 0
+      && typeof fields.passwordQuery === 'string'
+      && fields.passwordQuery.trim().length > 0;
+  }
+
+  return false;
 }
 
 function verifyAgainstSchema(data: unknown, schema?: {

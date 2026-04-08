@@ -1,11 +1,26 @@
 import type { ToolCallRecord } from '../agent/tool-usage-tracker.js';
 import type { SitePattern, KnowledgeCard } from './types.js';
 
+interface PatternExtractionOptions {
+  taskText?: string;
+  finalResult?: unknown;
+}
+
+export interface DomainToolHistory {
+  domain: string;
+  finalUrl: string;
+  history: ToolCallRecord[];
+}
+
 export class MemoryCapturer {
   /**
    * Extract reusable patterns from a successful agent run's tool history.
    */
-  static extractPatterns(toolHistory: readonly ToolCallRecord[], finalUrl: string): SitePattern[] {
+  static extractPatterns(
+    toolHistory: readonly ToolCallRecord[],
+    finalUrl: string,
+    options: PatternExtractionOptions = {},
+  ): SitePattern[] {
     const patterns: SitePattern[] = [];
     const now = Date.now();
     const seen = new Set<string>(); // dedup by value
@@ -136,7 +151,40 @@ export class MemoryCapturer {
       }
     }
 
+    const taskIntent = this.buildTaskIntentPattern(finalUrl, now, options.taskText, options.finalResult);
+    if (taskIntent && !seen.has(taskIntent.value)) {
+      seen.add(taskIntent.value);
+      patterns.push(taskIntent);
+    }
+
     return patterns;
+  }
+
+  static splitHistoryByDomain(toolHistory: readonly ToolCallRecord[]): DomainToolHistory[] {
+    const grouped = new Map<string, DomainToolHistory>();
+    let currentDomain = '';
+
+    for (const call of toolHistory) {
+      const navigatedUrl = this.extractToolUrl(call);
+      if (navigatedUrl) {
+        const domain = this.extractDomain(navigatedUrl);
+        if (domain) {
+          currentDomain = domain;
+          const entry = grouped.get(domain) ?? { domain, finalUrl: navigatedUrl, history: [] };
+          entry.finalUrl = navigatedUrl;
+          entry.history.push(call);
+          grouped.set(domain, entry);
+          continue;
+        }
+      }
+
+      if (!currentDomain) continue;
+      const entry = grouped.get(currentDomain);
+      if (!entry) continue;
+      entry.history.push(call);
+    }
+
+    return Array.from(grouped.values());
   }
 
   /** Extract root domain from URL: www.bilibili.com → bilibili.com */
@@ -164,6 +212,52 @@ export class MemoryCapturer {
       return new URL(url).pathname;
     } catch {
       return undefined;
+    }
+  }
+
+  private static extractToolUrl(call: ToolCallRecord): string | null {
+    if (!call.success) return null;
+    if ((call.toolName === 'navigate' || call.toolName === 'navigate_and_extract') && typeof call.args.url === 'string') {
+      return call.args.url;
+    }
+    return null;
+  }
+
+  private static buildTaskIntentPattern(
+    finalUrl: string,
+    now: number,
+    taskText?: string,
+    finalResult?: unknown,
+  ): SitePattern | null {
+    const normalizedTask = taskText?.trim();
+    if (!normalizedTask) return null;
+
+    const resultPreview = this.summarizeResult(finalResult);
+    const value = resultPreview
+      ? `${normalizedTask} → ${resultPreview}`
+      : normalizedTask.slice(0, 300);
+
+    return {
+      type: 'task_intent',
+      description: `任务经验: ${normalizedTask.slice(0, 120)}`,
+      value: value.slice(0, 400),
+      urlPattern: this.extractPath(finalUrl),
+      confidence: 0.7,
+      useCount: 1,
+      lastUsedAt: now,
+      createdAt: now,
+      source: 'agent_auto',
+    };
+  }
+
+  private static summarizeResult(finalResult: unknown): string {
+    if (finalResult === null || finalResult === undefined) return '';
+    if (typeof finalResult === 'string') return finalResult.slice(0, 200);
+
+    try {
+      return JSON.stringify(finalResult).slice(0, 200);
+    } catch {
+      return String(finalResult).slice(0, 200);
     }
   }
 }

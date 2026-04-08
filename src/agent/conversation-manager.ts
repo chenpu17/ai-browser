@@ -14,6 +14,12 @@ const DEFAULT_MAX_MESSAGES = 40;
 const DEFAULT_COMPRESS_THRESHOLD = 30;
 const DEFAULT_KEEP_RECENT = 20;
 const CHARS_PER_TOKEN = 4; // rough heuristic
+const CONTENT_BEARING_TOOLS = new Set([
+  'get_page_content',
+  'navigate_and_extract',
+  'get_artifact',
+  'get_task_run',
+]);
 
 export class ConversationManager {
   private messages: ChatCompletionMessageParam[] = [];
@@ -169,16 +175,18 @@ export class ConversationManager {
 
         // Collect subsequent tool results
         const results: string[] = [];
+        const resultLimit = toolNames.some((name: string) => CONTENT_BEARING_TOOLS.has(name)) ? 400 : 80;
         let j = i + 1;
         while (j < messages.length && messages[j].role === 'tool') {
           const rawContent = messages[j].content;
           const content = typeof rawContent === 'string' ? rawContent : '';
-          results.push(content.slice(0, 80));
+          results.push(content.slice(0, resultLimit));
           j++;
         }
 
         const thinkPart = thinking ? `思考:"${thinking.slice(0, 60)}" ` : '';
-        parts.push(`${thinkPart}调用 ${toolNames.join(',')} → ${results.join('; ').slice(0, 120)}`);
+        const summaryLimit = resultLimit > 80 ? 420 : 120;
+        parts.push(`${thinkPart}调用 ${toolNames.join(',')} → ${results.join('; ').slice(0, summaryLimit)}`);
         i = j;
         continue;
       }

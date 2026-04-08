@@ -89,4 +89,29 @@ describe('ConversationManager', () => {
     // Should be compressed
     expect(msgs.length).toBeLessThanOrEqual(8);
   });
+
+  it('keeps more context for content-heavy tool results during compression', () => {
+    const cm = new ConversationManager({
+      compressThreshold: 8,
+      keepRecent: 3,
+    });
+    cm.init('sys', [], 'task');
+    cm.push({
+      role: 'assistant',
+      content: 'Extracting content',
+      tool_calls: [{ id: 'tc1', type: 'function', function: { name: 'get_page_content', arguments: '{}' } }],
+    } as any);
+    cm.push({ role: 'tool', tool_call_id: 'tc1', content: 'A'.repeat(300) } as any);
+    cm.push({ role: 'assistant', content: 'step 1' });
+    cm.push({ role: 'assistant', content: 'step 2' });
+    cm.push({ role: 'assistant', content: 'step 3' });
+    cm.push({ role: 'assistant', content: 'step 4' });
+    cm.push({ role: 'assistant', content: 'step 5' });
+
+    const msgs = cm.getMessages();
+    const summaryMsg = msgs[1];
+    expect(summaryMsg.role).toBe('user');
+    expect(typeof summaryMsg.content).toBe('string');
+    expect((summaryMsg.content as string)).toContain('A'.repeat(200));
+  });
 });
