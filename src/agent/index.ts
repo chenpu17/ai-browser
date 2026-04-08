@@ -73,7 +73,7 @@ async function main() {
 
     console.log('\n---');
     if (result.success) {
-      console.log(`[结果] ${result.result}`);
+      console.log(`[结果] ${typeof result.result === 'string' ? result.result : JSON.stringify(result.result, null, 2)}`);
     } else {
       console.log(`[失败] ${result.error}`);
     }

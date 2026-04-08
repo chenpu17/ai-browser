@@ -95,6 +95,34 @@ describe('TaskAgent', () => {
     expect(result.result).toEqual({ summary: 'done' });
   });
 
+  it('injects output schema guidance into agent_goal prompt', async () => {
+    const runAgentGoal = vi.fn(async () => ({ success: true, result: { amount: 100 }, iterations: 1 }));
+    const agent = new TaskAgent({
+      mcpClient: { callTool: vi.fn() } as any,
+      runAgentGoal,
+      pollIntervalMs: 1,
+    });
+
+    const result = await agent.run({
+      goal: '提取订单金额',
+      inputs: { url: 'https://example.com/order' },
+      outputSchema: {
+        type: 'object',
+        required: ['amount'],
+        properties: {
+          amount: { type: 'number' },
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(runAgentGoal).toHaveBeenCalledTimes(1);
+    const prompt = runAgentGoal.mock.calls[0][0];
+    expect(prompt).toContain('提取订单金额');
+    expect(prompt).toContain('"amount"');
+    expect(prompt).toContain('必须调用 done 工具，并让 result 严格匹配以下 JSON Schema');
+  });
+
   it('returns failed result and emits done when template run fails', async () => {
     const callTool = vi.fn(async ({ name }: { name: string }) => {
       if (name === 'run_task_template') {
@@ -291,6 +319,39 @@ describe('TaskAgent', () => {
     expect(result.success).toBe(true);
     expect(runAgentGoal).toHaveBeenCalledTimes(2);
     expect(events.some((e) => e.type === 'repair_attempted')).toBe(true);
+  });
+
+  it('includes prior result in repair prompt', async () => {
+    const runAgentGoal = vi
+      .fn()
+      .mockResolvedValueOnce({ success: true, result: { title: '订单A' }, iterations: 1 })
+      .mockResolvedValueOnce({ success: true, result: { title: '订单A', amount: 88 }, iterations: 1 });
+
+    const agent = new TaskAgent({
+      mcpClient: { callTool: vi.fn() } as any,
+      runAgentGoal,
+      pollIntervalMs: 1,
+    });
+
+    const result = await agent.run({
+      goal: '提取订单信息',
+      budget: { maxRetries: 1 },
+      outputSchema: {
+        type: 'object',
+        required: ['title', 'amount'],
+        properties: {
+          title: { type: 'string' },
+          amount: { type: 'number' },
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(runAgentGoal).toHaveBeenCalledTimes(2);
+    const repairPrompt = runAgentGoal.mock.calls[1][0];
+    expect(repairPrompt).toContain('当前结果');
+    expect(repairPrompt).toContain('"title": "订单A"');
+    expect(repairPrompt).toContain('缺失字段: amount');
   });
 
 });

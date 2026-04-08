@@ -124,7 +124,16 @@ export class BrowsingAgent extends EventEmitter {
         parameters: {
           type: 'object',
           properties: {
-            result: { type: 'string', description: '任务的最终结果描述' },
+            result: {
+              description: '任务的最终结果，可为文本或结构化 JSON',
+              anyOf: [
+                { type: 'string' },
+                { type: 'number' },
+                { type: 'boolean' },
+                { type: 'object' },
+                { type: 'array' },
+              ],
+            },
           },
           required: ['result'],
         },
@@ -387,8 +396,9 @@ export class BrowsingAgent extends EventEmitter {
       this.emitEvent({ type: 'tool_call', name, args, iteration: this.state.iteration });
 
       if (name === 'done') {
-        const result = args.result || '任务完成';
-        console.log(`[Agent] 任务完成: ${result}`);
+        const result = args.result ?? '任务完成';
+        const preview = typeof result === 'string' ? result : JSON.stringify(result);
+        console.log(`[Agent] 任务完成: ${preview}`);
         this.state.done = true;
         return { success: true, result, iterations: this.state.iteration };
       }
