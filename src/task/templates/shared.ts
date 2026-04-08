@@ -50,14 +50,14 @@ export async function resolveTemplateElementId(
     });
 
     try {
-      const semanticId = await tab.page.$eval(locator.selector, (el) => (
-        (el as HTMLElement).getAttribute('data-semantic-id')
-          || (() => {
-            const generated = `manual_${Math.random().toString(36).slice(2, 10)}`;
-            (el as HTMLElement).setAttribute('data-semantic-id', generated);
-            return generated;
-          })()
-      ));
+      const semanticId = await tab.page.$eval(locator.selector, (el) => {
+        const element = el as HTMLElement;
+        const existing = element.getAttribute('data-semantic-id');
+        if (existing) return existing;
+        const generated = `manual_${Math.random().toString(36).slice(2, 10)}`;
+        element.setAttribute('data-semantic-id', generated);
+        return generated;
+      });
       if (!semanticId) {
         throw makeError(`Field found but missing semantic id: ${locator.selector}`, missingCode);
       }

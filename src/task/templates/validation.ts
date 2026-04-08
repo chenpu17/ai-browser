@@ -51,16 +51,16 @@ function validateStringArray(
 ): void {
   if (!Array.isArray(value)) {
     errors.push(`${field} must be an array`);
-    return;
-  }
-  if (opts.minLength !== undefined && value.length < opts.minLength) {
-    errors.push(`${field} must contain at least ${opts.minLength} item(s)`);
-  }
-  if (opts.maxLength !== undefined && value.length > opts.maxLength) {
-    errors.push(`${field} exceeds maximum of ${opts.maxLength} items`);
-  }
-  if (!value.every(isNonEmptyString)) {
-    errors.push(`${field} must contain non-empty strings`);
+  } else {
+    if (opts.minLength !== undefined && value.length < opts.minLength) {
+      errors.push(`${field} must contain at least ${opts.minLength} item(s)`);
+    }
+    if (opts.maxLength !== undefined && value.length > opts.maxLength) {
+      errors.push(`${field} exceeds maximum of ${opts.maxLength} items`);
+    }
+    if (!value.every(isNonEmptyString)) {
+      errors.push(`${field} must contain non-empty strings`);
+    }
   }
 }
 

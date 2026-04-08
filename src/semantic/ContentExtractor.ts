@@ -91,6 +91,9 @@ export class ContentExtractor {
       const W_SEMANTIC = 0.2;
       const W_CONTEXT = 0.18;
       const W_LENGTH = 0.08;
+      // Below-the-fold content remains important on long articles and list pages,
+      // so we soften the penalty until roughly three viewport heights away.
+      const OFFSCREEN_DISTANCE_MULTIPLIER = 3;
 
       // 用于嵌套去重：记录已收录的文本
       const seenTexts = new Set<string>();
@@ -116,7 +119,7 @@ export class ContentExtractor {
         const dist = Math.sqrt((elCenterX - viewportCenterX) ** 2 + (elCenterY - viewportCenterY) ** 2);
         const verticalDistance = Math.abs(elCenterY - viewportCenterY);
         let positionScore = 1 - Math.min(dist / maxDistance, 1);
-        const offscreenPenalty = Math.min(verticalDistance / (viewportH * 3), 1);
+        const offscreenPenalty = Math.min(verticalDistance / (viewportH * OFFSCREEN_DISTANCE_MULTIPLIER), 1);
         positionScore = Math.max(positionScore, 1 - offscreenPenalty);
         if (rect.top >= 0 && rect.bottom <= viewportH) positionScore = Math.min(positionScore + 0.15, 1);
 
