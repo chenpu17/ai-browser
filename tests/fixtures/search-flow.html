@@ -20,7 +20,14 @@
       const query = document.getElementById('search-box').value || 'default';
       const results = document.getElementById('results');
       document.title = 'Search Results';
-      results.innerHTML = '<p>Results for: ' + query + '</p><a class="result-link" href="article.html">Open article</a>';
+      results.replaceChildren();
+      const message = document.createElement('p');
+      message.textContent = 'Results for: ' + query;
+      const link = document.createElement('a');
+      link.className = 'result-link';
+      link.href = 'article.html';
+      link.textContent = 'Open article';
+      results.append(message, link);
     });
   </script>
 </body>
