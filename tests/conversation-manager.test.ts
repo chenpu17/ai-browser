@@ -95,13 +95,14 @@ describe('ConversationManager', () => {
       compressThreshold: 8,
       keepRecent: 3,
     });
+    const longContent = Array.from({ length: 180 }, (_, index) => String(index % 10)).join('');
     cm.init('sys', [], 'task');
     cm.push({
       role: 'assistant',
       content: 'Extracting content',
       tool_calls: [{ id: 'tc1', type: 'function', function: { name: 'get_page_content', arguments: '{}' } }],
     } as any);
-    cm.push({ role: 'tool', tool_call_id: 'tc1', content: 'A'.repeat(300) } as any);
+    cm.push({ role: 'tool', tool_call_id: 'tc1', content: longContent } as any);
     cm.push({ role: 'assistant', content: 'step 1' });
     cm.push({ role: 'assistant', content: 'step 2' });
     cm.push({ role: 'assistant', content: 'step 3' });
@@ -112,6 +113,7 @@ describe('ConversationManager', () => {
     const summaryMsg = msgs[1];
     expect(summaryMsg.role).toBe('user');
     expect(typeof summaryMsg.content).toBe('string');
-    expect((summaryMsg.content as string)).toContain('A'.repeat(200));
+    expect((summaryMsg.content as string)).toContain(longContent.slice(0, 120));
+    expect((summaryMsg.content as string)).toContain(longContent.slice(90, 140));
   });
 });

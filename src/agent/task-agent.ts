@@ -582,20 +582,18 @@ function hasValidLoginKeepSessionInputs(inputs?: Record<string, unknown>): boole
   }
 
   if (mode === 'selector') {
-    return typeof fields.usernameSelector === 'string'
-      && fields.usernameSelector.trim().length > 0
-      && typeof fields.passwordSelector === 'string'
-      && fields.passwordSelector.trim().length > 0;
+    return hasNonEmptyFieldValues(fields, 'usernameSelector', 'passwordSelector');
   }
 
   if (mode === 'semantic') {
-    return typeof fields.usernameQuery === 'string'
-      && fields.usernameQuery.trim().length > 0
-      && typeof fields.passwordQuery === 'string'
-      && fields.passwordQuery.trim().length > 0;
+    return hasNonEmptyFieldValues(fields, 'usernameQuery', 'passwordQuery');
   }
 
   return false;
+}
+
+function hasNonEmptyFieldValues(fields: Record<string, unknown>, ...fieldNames: string[]): boolean {
+  return fieldNames.every((fieldName) => typeof fields[fieldName] === 'string' && fields[fieldName].trim().length > 0);
 }
 
 function verifyAgainstSchema(data: unknown, schema?: {
