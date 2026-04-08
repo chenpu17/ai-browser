@@ -18,6 +18,8 @@ const DEFAULT_RESULT_LIMIT = 80;
 const CONTENT_BEARING_RESULT_LIMIT = 400;
 const DEFAULT_SUMMARY_LIMIT = 120;
 const CONTENT_BEARING_SUMMARY_LIMIT = 420;
+// These tools return larger text or structured payloads that the agent may need
+// later for extraction, repair, or artifact follow-up. Keep more context for them.
 const CONTENT_BEARING_TOOLS = new Set([
   'get_page_content',
   'navigate_and_extract',

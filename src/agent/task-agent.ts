@@ -543,9 +543,9 @@ function hasValidTemplateInputs(templateId?: string, inputs?: Record<string, unk
 
   switch (templateId) {
     case 'batch_extract_pages':
-      return isNonEmptyUrlArray(inputs?.urls);
+      return hasNonEmptyStringArray(inputs?.urls);
     case 'multi_tab_compare':
-      return isUrlArray(inputs?.urls, 2);
+      return hasStringArrayWithMinLength(inputs?.urls, 2);
     case 'login_keep_session':
       return hasValidLoginKeepSessionInputs(inputs);
     default:
@@ -553,14 +553,14 @@ function hasValidTemplateInputs(templateId?: string, inputs?: Record<string, unk
   }
 }
 
-function isUrlArray(value: unknown, minLength: number): value is string[] {
+function hasStringArrayWithMinLength(value: unknown, minLength: number): value is string[] {
   return Array.isArray(value)
     && value.length >= minLength
     && value.every((item) => typeof item === 'string' && item.trim().length > 0);
 }
 
-function isNonEmptyUrlArray(value: unknown): value is string[] {
-  return isUrlArray(value, 1);
+function hasNonEmptyStringArray(value: unknown): value is string[] {
+  return hasStringArrayWithMinLength(value, 1);
 }
 
 function hasValidLoginKeepSessionInputs(inputs?: Record<string, unknown>): boolean {

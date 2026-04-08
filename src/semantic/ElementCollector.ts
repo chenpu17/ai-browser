@@ -81,7 +81,8 @@ export class ElementCollector {
     const results: R[] = [];
     for (let i = 0; i < items.length; i += batchSize) {
       const batch = items.slice(i, i + batchSize);
-      results.push(...await Promise.all(batch.map(mapper)));
+      const batchResults = await Promise.all(batch.map(mapper));
+      results.push.apply(results, batchResults);
     }
     return results;
   }
