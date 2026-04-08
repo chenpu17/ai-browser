@@ -2069,7 +2069,12 @@ function safeMd(s) {
 
 function formatValue(value) {
   if (value === null || value === undefined) return '';
-  return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }
 
 function previewValue(value, maxLen) {

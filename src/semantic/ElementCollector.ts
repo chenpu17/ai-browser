@@ -7,6 +7,9 @@ interface CollectedNode {
   id: string;
 }
 
+const BOUNDS_BATCH_SIZE = 20;
+const ATTRIBUTE_BATCH_SIZE = 50;
+
 export class ElementCollector {
   private elementCounter = 0;
 
@@ -17,12 +20,14 @@ export class ElementCollector {
       await client.send('DOM.enable');
       const { nodes } = await client.send('Accessibility.getFullAXTree');
       const interactableNodes = nodes.filter((node: any) => this.isInteractable(node));
-      const collectedNodes: CollectedNode[] = await Promise.all(
-        interactableNodes.map(async (node: any) => ({
+      const collectedNodes: CollectedNode[] = await this.mapInBatches(
+        interactableNodes,
+        BOUNDS_BATCH_SIZE,
+        async (node: any) => ({
           node,
           bounds: await this.getBounds(client, node.backendDOMNodeId),
           id: this.generateId(node),
-        })),
+        }),
       );
 
       // Inject semantic IDs into DOM using page.evaluate
@@ -50,19 +55,35 @@ export class ElementCollector {
 
     try {
       const { nodeIds } = await client.send('DOM.pushNodesByBackendIdsToFrontend', { backendNodeIds });
-      await Promise.allSettled(
-        nodeIds.map((nodeId: number, index: number) => {
-          if (!nodeId) return Promise.resolve();
-          return client.send('DOM.setAttributeValue', {
+      const pairs = nodeIds.map((nodeId: number, index: number) => ({ nodeId, semanticId: semanticIds[index] }));
+      await this.mapInBatches(
+        pairs,
+        ATTRIBUTE_BATCH_SIZE,
+        async ({ nodeId, semanticId }) => {
+          if (!nodeId) return;
+          await client.send('DOM.setAttributeValue', {
             nodeId,
             name: 'data-semantic-id',
-            value: semanticIds[index],
+            value: semanticId,
           });
-        }),
+        },
       );
     } catch {
       // Element may not be accessible
     }
+  }
+
+  private async mapInBatches<T, R>(
+    items: T[],
+    batchSize: number,
+    mapper: (item: T) => Promise<R>,
+  ): Promise<R[]> {
+    const results: R[] = [];
+    for (let i = 0; i < items.length; i += batchSize) {
+      const batch = items.slice(i, i + batchSize);
+      results.push(...await Promise.all(batch.map(mapper)));
+    }
+    return results;
   }
 
   private async getBounds(client: CDPSession, backendNodeId?: number): Promise<Rect> {

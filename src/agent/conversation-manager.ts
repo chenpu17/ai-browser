@@ -14,6 +14,10 @@ const DEFAULT_MAX_MESSAGES = 40;
 const DEFAULT_COMPRESS_THRESHOLD = 30;
 const DEFAULT_KEEP_RECENT = 20;
 const CHARS_PER_TOKEN = 4; // rough heuristic
+const DEFAULT_RESULT_LIMIT = 80;
+const CONTENT_BEARING_RESULT_LIMIT = 400;
+const DEFAULT_SUMMARY_LIMIT = 120;
+const CONTENT_BEARING_SUMMARY_LIMIT = 420;
 const CONTENT_BEARING_TOOLS = new Set([
   'get_page_content',
   'navigate_and_extract',
@@ -175,7 +179,9 @@ export class ConversationManager {
 
         // Collect subsequent tool results
         const results: string[] = [];
-        const resultLimit = toolNames.some((name: string) => CONTENT_BEARING_TOOLS.has(name)) ? 400 : 80;
+        const resultLimit = toolNames.some((name: string) => CONTENT_BEARING_TOOLS.has(name))
+          ? CONTENT_BEARING_RESULT_LIMIT
+          : DEFAULT_RESULT_LIMIT;
         let j = i + 1;
         while (j < messages.length && messages[j].role === 'tool') {
           const rawContent = messages[j].content;
@@ -185,7 +191,9 @@ export class ConversationManager {
         }
 
         const thinkPart = thinking ? `思考:"${thinking.slice(0, 60)}" ` : '';
-        const summaryLimit = resultLimit > 80 ? 420 : 120;
+        const summaryLimit = resultLimit > DEFAULT_RESULT_LIMIT
+          ? CONTENT_BEARING_SUMMARY_LIMIT
+          : DEFAULT_SUMMARY_LIMIT;
         parts.push(`${thinkPart}调用 ${toolNames.join(',')} → ${results.join('; ').slice(0, summaryLimit)}`);
         i = j;
         continue;
