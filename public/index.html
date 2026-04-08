@@ -2067,6 +2067,21 @@ function safeMd(s) {
   return DOMPurify.sanitize(marked.parse(s || ''));
 }
 
+function formatValue(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function previewValue(value, maxLen) {
+  var text = formatValue(value);
+  return text.length > maxLen ? text.slice(0, maxLen) + '…' : text;
+}
+
 // ========== Settings (localStorage, shared) ==========
 var SETTINGS_KEY = 'ai_browser_agent_settings';
 
@@ -2859,7 +2874,7 @@ Agent.handleEvent = function(ev) {
       self.addMsg('memory_recall', ev.domain, ev.iteration, ev.patternCount);
       break;
     case 'done':
-      self.addMsg('done', ev.success ? (ev.result || 'Done') : (ev.error || 'Failed'), null, ev.success);
+      self.addMsg('done', ev.success ? (formatValue(ev.result) || 'Done') : (ev.error || 'Failed'), null, ev.success);
       var summary = 'Total steps: ' + ev.iterations;
       if (ev.tokenUsage && ev.tokenUsage.total) {
         var tu = ev.tokenUsage;
@@ -2868,7 +2883,7 @@ Agent.handleEvent = function(ev) {
       self.addMsg('system', summary);
       if (self.currentTask) {
         self.conversationHistory.push({ role: 'user', content: self.currentTask });
-        self.conversationHistory.push({ role: 'assistant', content: ev.result || ev.error || 'Done' });
+        self.conversationHistory.push({ role: 'assistant', content: formatValue(ev.result) || ev.error || 'Done' });
         if (self.conversationHistory.length > 20) {
           self.conversationHistory = self.conversationHistory.slice(-20);
         }
@@ -2988,7 +3003,7 @@ Agent.humanizeToolCall = function(name, args) {
     go_back: function() { return 'Go back'; },
     wait: function(a) { return 'Wait: ' + (a.condition || (a.ms + 'ms')); },
     wait_for_stable: function() { return 'Wait for page stable'; },
-    done: function(a) { return 'Done: ' + (a.result || '').slice(0, 50); },
+    done: function(a) { return 'Done: ' + previewValue(a.result, 50); },
     set_value: function(a) { return 'Set value: ' + (a.elementId || a.element_id || ''); },
     upload_file: function() { return 'Upload file'; },
     execute_javascript: function() { return 'Execute JavaScript'; },

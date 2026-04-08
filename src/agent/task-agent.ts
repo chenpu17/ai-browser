@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { hasValidTemplateInputs } from '../task/templates/validation.js';
 
 const TERMINAL_STATUSES = new Set([
   'succeeded',
@@ -65,6 +66,11 @@ export type TaskAgentResult = {
 
 type GoalRunner = (goal: string) => Promise<{ success: boolean; result?: unknown; error?: string; iterations?: number }>;
 type PlannerClassifier = (taskSpec: TaskSpec) => Promise<PlanStep | null>;
+type RepairContext = {
+  result?: unknown;
+  runId?: string;
+  taskSpec: TaskSpec;
+};
 
 export class TaskAgent extends EventEmitter {
   private mcpClient: Client;
@@ -109,7 +115,11 @@ export class TaskAgent extends EventEmitter {
   plan(taskSpec: TaskSpec): PlanStep[] {
     for (const rule of this.plannerRules) {
       if (!rule.match(taskSpec)) continue;
-      return [rule.buildStep(taskSpec)];
+      const step = rule.buildStep(taskSpec);
+      if (step.type === 'template' && !hasValidTemplateInputs(step.templateId, step.inputs)) {
+        continue;
+      }
+      return [step];
     }
 
     return [{
@@ -119,16 +129,24 @@ export class TaskAgent extends EventEmitter {
     }];
   }
 
-  repair(verify: VerifyResult, _lastRunContext: unknown): PlanStep[] {
+  repair(verify: VerifyResult, lastRunContext: RepairContext): PlanStep[] {
     if (verify.pass) return [];
     if (verify.missingFields.length === 0 && verify.typeMismatches.length === 0) {
       return [];
     }
 
+    const originalGoal = lastRunContext.taskSpec.goal;
+    const partialResult = JSON.stringify(lastRunContext.result ?? null, null, 2);
     return [{
       id: 'repair_1',
       type: 'agent_goal',
-      goal: `Please fill missing fields and fix type mismatches: missing=${verify.missingFields.join(',')}; type=${verify.typeMismatches.join(',')}`,
+      goal: [
+        `原始任务: ${originalGoal}`,
+        `请基于已有结果，仅修复缺失字段和类型错误，不要丢失已经确认正确的字段。`,
+        `当前结果: ${partialResult}`,
+        verify.missingFields.length > 0 ? `缺失字段: ${verify.missingFields.join(', ')}` : '',
+        verify.typeMismatches.length > 0 ? `类型错误字段: ${verify.typeMismatches.join(', ')}` : '',
+      ].filter(Boolean).join('\n'),
     }];
   }
 
@@ -195,7 +213,7 @@ export class TaskAgent extends EventEmitter {
             continue;
           }
 
-          const goalResult = await this.executeGoalStep(step);
+          const goalResult = await this.executeGoalStep(step, taskSpec);
           if (!goalResult.success) {
             const failVerify: VerifyResult = {
               pass: false,
@@ -237,7 +255,7 @@ export class TaskAgent extends EventEmitter {
           });
         }
 
-        const patchPlan = this.repair(verification, { result: lastResult, runId: lastRunId });
+        const patchPlan = this.repair(verification, { result: lastResult, runId: lastRunId, taskSpec });
         if (patchPlan.length === 0) {
           return finalize({
             success: false,
@@ -379,6 +397,7 @@ export class TaskAgent extends EventEmitter {
 
   private async executeGoalStep(
     step: PlanStep,
+    taskSpec: TaskSpec,
   ): Promise<{ success: boolean; result?: unknown; error?: string; iterations?: number }> {
     if (!step.goal) {
       return { success: false, error: 'agent_goal step missing goal' };
@@ -388,7 +407,7 @@ export class TaskAgent extends EventEmitter {
     }
 
     try {
-      return await this.runAgentGoal(step.goal);
+      return await this.runAgentGoal(buildAgentGoalPrompt(taskSpec, step.goal));
     } catch (err: any) {
       return {
         success: false,
@@ -403,11 +422,13 @@ function normalizeClassifierStep(step: PlanStep | null, taskSpec: TaskSpec): Pla
 
   if (step.type === 'template') {
     if (!step.templateId) return null;
+    const normalizedInputs = step.inputs ?? taskSpec.inputs;
+    if (!hasValidTemplateInputs(step.templateId, normalizedInputs)) return null;
     return {
       id: step.id || 'step_1',
       type: 'template',
       templateId: step.templateId,
-      inputs: step.inputs ?? taskSpec.inputs,
+      inputs: normalizedInputs,
       fallbackStepIds: step.fallbackStepIds,
       dependsOn: step.dependsOn,
     };
@@ -481,6 +502,68 @@ function defaultPlannerRules(): PlannerRule[] {
         };
       },
     },
+    {
+      id: 'search_extract_by_inputs_or_goal',
+      match(taskSpec: TaskSpec): boolean {
+        const goal = taskSpec.goal.toLowerCase();
+        return Boolean(taskSpec.inputs?.query) && (
+          Boolean(taskSpec.inputs?.searchField)
+          || goal.includes('search')
+          || goal.includes('搜索')
+        );
+      },
+      buildStep(taskSpec: TaskSpec): PlanStep {
+        return {
+          id: 'step_1',
+          type: 'template',
+          templateId: 'search_extract',
+          inputs: taskSpec.inputs,
+        };
+      },
+    },
+    {
+      id: 'paginated_extract_by_inputs_or_goal',
+      match(taskSpec: TaskSpec): boolean {
+        const goal = taskSpec.goal.toLowerCase();
+        return Boolean(taskSpec.inputs?.pagination) && (
+          goal.includes('分页')
+          || goal.includes('下一页')
+          || goal.includes('翻页')
+          || goal.includes('page')
+          || goal.includes('pagination')
+        );
+      },
+      buildStep(taskSpec: TaskSpec): PlanStep {
+        return {
+          id: 'step_1',
+          type: 'template',
+          templateId: 'paginated_extract',
+          inputs: taskSpec.inputs,
+        };
+      },
+    },
+    {
+      id: 'submit_and_verify_by_inputs_or_goal',
+      match(taskSpec: TaskSpec): boolean {
+        const goal = taskSpec.goal.toLowerCase();
+        return Array.isArray(taskSpec.inputs?.fields) && (
+          goal.includes('submit')
+          || goal.includes('提交')
+          || goal.includes('保存')
+          || goal.includes('confirm')
+          || goal.includes('verify')
+          || goal.includes('验证')
+        );
+      },
+      buildStep(taskSpec: TaskSpec): PlanStep {
+        return {
+          id: 'step_1',
+          type: 'template',
+          templateId: 'submit_and_verify',
+          inputs: taskSpec.inputs,
+        };
+      },
+    },
   ];
 }
 
@@ -500,6 +583,22 @@ function sleep(ms: number): Promise<void> {
 
 function createTraceId(): string {
   return `trace_${randomUUID()}`;
+}
+
+function buildAgentGoalPrompt(taskSpec: TaskSpec, goal: string): string {
+  const sections = [goal];
+
+  if (taskSpec.inputs && Object.keys(taskSpec.inputs).length > 0) {
+    sections.push(`任务输入:\n${JSON.stringify(taskSpec.inputs, null, 2)}`);
+  }
+
+  if (taskSpec.outputSchema) {
+    sections.push(
+      `完成任务时，必须调用 done 工具，并让 result 严格匹配以下 JSON Schema。不要返回纯文本总结代替结构化结果：\n${JSON.stringify(taskSpec.outputSchema, null, 2)}`,
+    );
+  }
+
+  return sections.join('\n\n');
 }
 
 function verifyAgainstSchema(data: unknown, schema?: {

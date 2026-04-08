@@ -25,6 +25,24 @@ const templateMocks = vi.hoisted(() => ({
     snapshots: [],
     diffs: [],
   })),
+  executeSearchExtract: vi.fn(async () => ({
+    success: true,
+    finalPage: { url: 'https://example.com/article', title: 'Article' },
+    query: 'hello',
+    resultOpened: true,
+  })),
+  executePaginatedExtract: vi.fn(async () => ({
+    success: true,
+    summary: { totalPages: 2, extractedPages: 2 },
+    pages: [],
+    stoppedReason: 'max_pages',
+  })),
+  executeSubmitAndVerify: vi.fn(async () => ({
+    success: true,
+    finalPage: { url: 'https://example.com/thanks', title: 'Thanks' },
+    submittedFields: ['email'],
+    indicatorMatched: true,
+  })),
 }));
 
 vi.mock('../src/task/templates/batch-extract.js', async () => {
@@ -48,6 +66,30 @@ vi.mock('../src/task/templates/multi-tab-compare.js', async () => {
   return {
     ...actual,
     executeMultiTabCompare: templateMocks.executeMultiTabCompare,
+  };
+});
+
+vi.mock('../src/task/templates/search-extract.js', async () => {
+  const actual = await vi.importActual('../src/task/templates/search-extract.js');
+  return {
+    ...actual,
+    executeSearchExtract: templateMocks.executeSearchExtract,
+  };
+});
+
+vi.mock('../src/task/templates/paginated-extract.js', async () => {
+  const actual = await vi.importActual('../src/task/templates/paginated-extract.js');
+  return {
+    ...actual,
+    executePaginatedExtract: templateMocks.executePaginatedExtract,
+  };
+});
+
+vi.mock('../src/task/templates/submit-and-verify.js', async () => {
+  const actual = await vi.importActual('../src/task/templates/submit-and-verify.js');
+  return {
+    ...actual,
+    executeSubmitAndVerify: templateMocks.executeSubmitAndVerify,
   };
 });
 
@@ -257,10 +299,12 @@ describe('task-tools regression coverage', () => {
     });
     const templates = parseResult(templatesRes);
     expect(Array.isArray(templates.templates)).toBe(true);
+    expect(templates.templates).toHaveLength(6);
     expect(templates.aiSummary).toContain('task templates');
     expect(templates.aiMarkdown).toContain('## Task Template List');
     expect(templates.hasMore).toBe(false);
     expect(templates.nextCursor).toBeNull();
+    expect(templates.templates[0]).toHaveProperty('exampleInputs');
 
     const profileRes = await mcpClient.callTool({
       name: 'get_runtime_profile',

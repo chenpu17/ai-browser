@@ -181,6 +181,37 @@ describe('MemoryInjector', () => {
       expect(newIdx).toBeLessThan(oldIdx);
     });
 
+    it('prioritizes relevant task_intent entries when taskHint has matches', () => {
+      const patterns = [
+        {
+          type: 'task_intent' as const,
+          description: '任务经验: 搜索商品并打开详情',
+          value: '搜索商品并打开详情 | 路径:/search',
+          confidence: 0.9,
+          useCount: 2,
+          lastUsedAt: now,
+          createdAt: now,
+          source: 'agent_auto' as const,
+        },
+        {
+          type: 'task_intent' as const,
+          description: '任务经验: 浏览帮助中心',
+          value: '浏览帮助中心 | 路径:/help',
+          confidence: 0.9,
+          useCount: 5,
+          lastUsedAt: now,
+          createdAt: now,
+          source: 'agent_auto' as const,
+        },
+      ];
+      const ctx = MemoryInjector.buildContext(makeCard({ patterns }), 2000, '搜索商品');
+      const searchIdx = ctx.indexOf('搜索商品并打开详情');
+      const helpIdx = ctx.indexOf('浏览帮助中心');
+      expect(searchIdx).toBeGreaterThan(-1);
+      expect(helpIdx).toBeGreaterThan(-1);
+      expect(searchIdx).toBeLessThan(helpIdx);
+    });
+
     it('filters non-global patterns by taskHint relevance', () => {
       const patterns = [
         {

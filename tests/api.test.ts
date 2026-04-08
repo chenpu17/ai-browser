@@ -38,13 +38,13 @@ describe('API Routes', () => {
     app = Fastify();
     registerRoutes(app, sessionManager, new CookieStore());
     await app.ready();
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await sessionManager.closeAll();
     await browserManager.close();
     await app.close();
-  });
+  }, 30_000);
 
   describe('GET /health', () => {
     it('should return healthy status', async () => {
@@ -69,6 +69,58 @@ describe('API Routes', () => {
       const body = JSON.parse(response.body);
       expect(body.version).toBeTruthy();
       expect(body.capabilities).toContain('semantic');
+    });
+  });
+
+  describe('Semantic/content REST routes', () => {
+    it('returns semantic page info via shared route path', async () => {
+      const sessionResp = await app.inject({
+        method: 'POST',
+        url: '/v1/sessions',
+        payload: {},
+      });
+      const { sessionId } = JSON.parse(sessionResp.body);
+
+      await app.inject({
+        method: 'POST',
+        url: `/v1/sessions/${sessionId}/navigate`,
+        payload: { url: fixtureUrl('article.html') },
+      });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/v1/sessions/${sessionId}/semantic`,
+      });
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.page.title).toBe('Test Article');
+      expect(Array.isArray(body.elements)).toBe(true);
+      expect(Array.isArray(body.intents)).toBe(true);
+    });
+
+    it('returns extracted content via shared route path', async () => {
+      const sessionResp = await app.inject({
+        method: 'POST',
+        url: '/v1/sessions',
+        payload: {},
+      });
+      const { sessionId } = JSON.parse(sessionResp.body);
+
+      await app.inject({
+        method: 'POST',
+        url: `/v1/sessions/${sessionId}/navigate`,
+        payload: { url: fixtureUrl('article.html') },
+      });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/v1/sessions/${sessionId}/content`,
+      });
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.title).toBe('Test Article');
+      expect(Array.isArray(body.sections)).toBe(true);
+      expect(body.sections.some((section: any) => String(section.text).includes('Article Title'))).toBe(true);
     });
   });
 

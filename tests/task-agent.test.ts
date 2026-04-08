@@ -31,6 +31,114 @@ describe('TaskAgent', () => {
     expect(plan[0].goal).toContain('探索');
   });
 
+  it('falls back to agent_goal when login template inputs are incomplete', () => {
+    const mcpClient = { callTool: vi.fn() } as any;
+    const agent = new TaskAgent({ mcpClient });
+
+    const plan = agent.plan({
+      goal: '请帮我登录 github',
+      inputs: {
+        startUrl: 'https://github.com/login',
+      },
+    });
+
+    expect(plan).toHaveLength(1);
+    expect(plan[0].type).toBe('agent_goal');
+    expect(plan[0].goal).toContain('登录');
+  });
+
+  it('uses login template when required login inputs are present', () => {
+    const mcpClient = { callTool: vi.fn() } as any;
+    const agent = new TaskAgent({ mcpClient });
+
+    const plan = agent.plan({
+      goal: '请帮我登录 github',
+      inputs: {
+        startUrl: 'https://github.com/login',
+        credentials: {
+          username: 'user',
+          password: 'secret',
+        },
+        fields: {
+          mode: 'selector',
+          usernameSelector: '#login_field',
+          passwordSelector: '#password',
+        },
+      },
+    });
+
+    expect(plan).toHaveLength(1);
+    expect(plan[0].type).toBe('template');
+    expect(plan[0].templateId).toBe('login_keep_session');
+  });
+
+  it('plans search_extract when search inputs are complete', () => {
+    const mcpClient = { callTool: vi.fn() } as any;
+    const agent = new TaskAgent({ mcpClient });
+
+    const plan = agent.plan({
+      goal: '搜索最新文章并提取内容',
+      inputs: {
+        startUrl: 'https://example.com/search',
+        query: 'ai browser',
+        searchField: {
+          mode: 'selector',
+          selector: 'input[type="search"]',
+        },
+      },
+    });
+
+    expect(plan).toHaveLength(1);
+    expect(plan[0].type).toBe('template');
+    expect(plan[0].templateId).toBe('search_extract');
+  });
+
+  it('falls back to agent_goal when search_extract inputs are incomplete', () => {
+    const mcpClient = { callTool: vi.fn() } as any;
+    const agent = new TaskAgent({ mcpClient });
+
+    const plan = agent.plan({
+      goal: '搜索最新文章并提取内容',
+      inputs: {
+        startUrl: 'https://example.com/search',
+        query: 'ai browser',
+      },
+    });
+
+    expect(plan).toHaveLength(1);
+    expect(plan[0].type).toBe('agent_goal');
+  });
+
+  it('plans submit_and_verify when form submission inputs are complete', () => {
+    const mcpClient = { callTool: vi.fn() } as any;
+    const agent = new TaskAgent({ mcpClient });
+
+    const plan = agent.plan({
+      goal: '填写表单并提交后验证成功提示',
+      inputs: {
+        startUrl: 'https://example.com/form',
+        fields: [
+          {
+            name: 'email',
+            value: 'alice@example.com',
+            locator: {
+              mode: 'selector',
+              selector: '#email',
+            },
+          },
+        ],
+        successIndicator: {
+          type: 'textIncludes',
+          value: 'Success',
+        },
+      },
+    });
+
+    expect(plan).toHaveLength(1);
+    expect(plan[0].type).toBe('template');
+    expect(plan[0].templateId).toBe('submit_and_verify');
+  });
+
   it('executes template flow and verifies output schema', async () => {
     const callTool = vi.fn(async ({ name }: { name: string }) => {
       if (name === 'run_task_template') {
@@ -93,6 +201,34 @@ describe('TaskAgent', () => {
     expect(runAgentGoal).toHaveBeenCalledTimes(1);
     expect(result.success).toBe(true);
     expect(result.result).toEqual({ summary: 'done' });
+  });
+
+  it('injects output schema guidance into agent_goal prompt', async () => {
+    const runAgentGoal = vi.fn(async () => ({ success: true, result: { amount: 100 }, iterations: 1 }));
+    const agent = new TaskAgent({
+      mcpClient: { callTool: vi.fn() } as any,
+      runAgentGoal,
+      pollIntervalMs: 1,
+    });
+
+    const result = await agent.run({
+      goal: '提取订单金额',
+      inputs: { url: 'https://example.com/order' },
+      outputSchema: {
+        type: 'object',
+        required: ['amount'],
+        properties: {
+          amount: { type: 'number' },
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(runAgentGoal).toHaveBeenCalledTimes(1);
+    const prompt = runAgentGoal.mock.calls[0][0];
+    expect(prompt).toContain('提取订单金额');
+    expect(prompt).toContain('"amount"');
+    expect(prompt).toContain('必须调用 done 工具，并让 result 严格匹配以下 JSON Schema');
   });
 
   it('returns failed result and emits done when template run fails', async () => {
@@ -291,6 +427,39 @@ describe('TaskAgent', () => {
     expect(result.success).toBe(true);
     expect(runAgentGoal).toHaveBeenCalledTimes(2);
     expect(events.some((e) => e.type === 'repair_attempted')).toBe(true);
+  });
+
+  it('includes prior result in repair prompt', async () => {
+    const runAgentGoal = vi
+      .fn()
+      .mockResolvedValueOnce({ success: true, result: { title: '订单A' }, iterations: 1 })
+      .mockResolvedValueOnce({ success: true, result: { title: '订单A', amount: 88 }, iterations: 1 });
+
+    const agent = new TaskAgent({
+      mcpClient: { callTool: vi.fn() } as any,
+      runAgentGoal,
+      pollIntervalMs: 1,
+    });
+
+    const result = await agent.run({
+      goal: '提取订单信息',
+      budget: { maxRetries: 1 },
+      outputSchema: {
+        type: 'object',
+        required: ['title', 'amount'],
+        properties: {
+          title: { type: 'string' },
+          amount: { type: 'number' },
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(runAgentGoal).toHaveBeenCalledTimes(2);
+    const repairPrompt = runAgentGoal.mock.calls[1][0];
+    expect(repairPrompt).toContain('当前结果');
+    expect(repairPrompt).toContain('"title": "订单A"');
+    expect(repairPrompt).toContain('缺失字段: amount');
   });
 
 });

@@ -7,6 +7,8 @@ interface CollectedNode {
   id: string;
 }
 
+const ATTRIBUTE_BATCH_SIZE = 50;
+
 export class ElementCollector {
   private elementCounter = 0;
 
@@ -16,18 +18,19 @@ export class ElementCollector {
       // Enable DOM for node resolution
       await client.send('DOM.enable');
       const { nodes } = await client.send('Accessibility.getFullAXTree');
-      const collectedNodes: CollectedNode[] = [];
-
-      for (const node of nodes) {
-        if (this.isInteractable(node)) {
-          const bounds = await this.getBounds(client, node.backendDOMNodeId);
-          const id = this.generateId(node);
-          collectedNodes.push({ node, bounds, id });
-        }
-      }
+      const interactableNodes = nodes.filter((node: any) => this.isInteractable(node));
+      const collectedNodes: CollectedNode[] = interactableNodes.map((node: any) => ({
+        node,
+        bounds: { x: 0, y: 0, width: 0, height: 0 },
+        id: this.generateId(node),
+      }));
 
       // Inject semantic IDs into DOM using page.evaluate
-      await this.injectSemanticIds(page, client, collectedNodes);
+      await this.injectSemanticIds(client, collectedNodes);
+      const boundsById = await this.collectBounds(page);
+      for (const collected of collectedNodes) {
+        collected.bounds = boundsById.get(collected.id) ?? { x: 0, y: 0, width: 0, height: 0 };
+      }
 
       return collectedNodes.map((cn) => this.toSemanticElement(cn));
     } finally {
@@ -36,59 +39,84 @@ export class ElementCollector {
   }
 
   private async injectSemanticIds(
-    page: Page,
     client: CDPSession,
     collectedNodes: CollectedNode[]
   ): Promise<void> {
-    // Build a map of backendNodeId -> semanticId
-    const nodeIdMap: Array<{ backendNodeId: number; semanticId: string }> = [];
+    const backendNodeIds: number[] = [];
+    const semanticIds: string[] = [];
     for (const { node, id } of collectedNodes) {
       if (node.backendDOMNodeId) {
-        nodeIdMap.push({ backendNodeId: node.backendDOMNodeId, semanticId: id });
+        backendNodeIds.push(node.backendDOMNodeId);
+        semanticIds.push(id);
       }
     }
+    if (backendNodeIds.length === 0) return;
 
-    // Resolve backend node IDs to object IDs and inject attributes
-    for (const { backendNodeId, semanticId } of nodeIdMap) {
-      try {
-        const { object } = await client.send('DOM.resolveNode', { backendNodeId });
-        if (object?.objectId) {
-          try {
-            await client.send('Runtime.callFunctionOn', {
-              objectId: object.objectId,
-              functionDeclaration: `function(id) { this.setAttribute('data-semantic-id', id); }`,
-              arguments: [{ value: semanticId }],
-            });
-          } finally {
-            await client.send('Runtime.releaseObject', { objectId: object.objectId }).catch(() => {});
-          }
-        }
-      } catch {
-        // Element may not be accessible
-      }
+    try {
+      const { nodeIds } = await client.send('DOM.pushNodesByBackendIdsToFrontend', { backendNodeIds });
+      const pairs = nodeIds.map((nodeId: number, index: number) => ({ nodeId, semanticId: semanticIds[index] }));
+      await this.mapInBatches(
+        pairs,
+        ATTRIBUTE_BATCH_SIZE,
+        async ({ nodeId, semanticId }) => {
+          if (!nodeId) return;
+          await client.send('DOM.setAttributeValue', {
+            nodeId,
+            name: 'data-semantic-id',
+            value: semanticId,
+          });
+        },
+      );
+    } catch {
+      // Element may not be accessible
     }
   }
 
-  private async getBounds(client: CDPSession, backendNodeId?: number): Promise<Rect> {
-    if (!backendNodeId) {
-      return { x: 0, y: 0, width: 0, height: 0 };
+  private async mapInBatches<T, R>(
+    items: T[],
+    batchSize: number,
+    mapper: (item: T) => Promise<R>,
+  ): Promise<R[]> {
+    const results: R[] = [];
+    for (let i = 0; i < items.length; i += batchSize) {
+      const batch = items.slice(i, i + batchSize);
+      const batchResults = await Promise.all(batch.map(mapper));
+      results.push.apply(results, batchResults);
     }
+    return results;
+  }
+
+  private async collectBounds(page: Page): Promise<Map<string, Rect>> {
     try {
-      const { model } = await client.send('DOM.getBoxModel', { backendNodeId });
-      if (model?.content) {
-        const [x1, y1, x2, , , y3] = model.content;
-        return { x: x1, y: y1, width: x2 - x1, height: y3 - y1 };
-      }
+      const bounds = await page.evaluate(() => {
+        return Array.from(document.querySelectorAll('[data-semantic-id]'))
+          .map((node) => {
+            const el = node as HTMLElement;
+            const id = el.getAttribute('data-semantic-id');
+            if (!id) return null;
+            const rect = el.getBoundingClientRect();
+            return {
+              id,
+              rect: {
+                x: Math.round(rect.x),
+                y: Math.round(rect.y),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+              },
+            };
+          })
+          .filter(Boolean) as Array<{ id: string; rect: Rect }>;
+      });
+      return new Map(bounds.map((item) => [item.id, item.rect]));
     } catch {
-      // Element may not have a box model (e.g., hidden)
+      return new Map();
     }
-    return { x: 0, y: 0, width: 0, height: 0 };
   }
 
   private isInteractable(node: any): boolean {
     const role = node.role?.value;
     const interactableRoles = [
-      'button', 'link', 'textbox', 'checkbox',
+      'button', 'link', 'textbox', 'searchbox', 'checkbox',
       'radio', 'combobox', 'menuitem', 'tab'
     ];
     return interactableRoles.includes(role);
@@ -125,6 +153,7 @@ export class ElementCollector {
       button: 'btn',
       link: 'link',
       textbox: 'input',
+      searchbox: 'input',
       checkbox: 'chk',
       radio: 'radio',
       combobox: 'select',
@@ -139,6 +168,7 @@ export class ElementCollector {
       button: ['click'],
       link: ['click'],
       textbox: ['type', 'clear', 'focus'],
+      searchbox: ['type', 'clear', 'focus'],
       checkbox: ['click', 'check'],
       radio: ['click'],
       combobox: ['click', 'select'],

@@ -32,7 +32,7 @@ Single test file: `npx vitest run tests/<filename>.test.ts`
 - **Agent Layer** (`src/agent/`): LLM-driven autonomous browsing. `BrowsingAgent` in `agent-loop.ts` runs think→tool_call→result loop. `TaskAgent` in `task-agent.ts` runs deterministic (non-LLM) task templates
 - **Memory Layer** (`src/memory/`): Site memory system — `KnowledgeCardStore` persists selectors/navigation paths per domain, `SessionRecorder` captures interactions, `MemoryInjector` injects recalled context into agent
 - **Task Layer** (`src/task/`): Deterministic task templates (`templates/` dir) with `RunManager`, artifact storage, cancellation support
-- **Semantic Layer** (`src/semantic/`): Chrome Accessibility Tree (CDP) analysis. `ElementCollector` extracts elements, each gets a semantic ID (`{prefix}_{label}_{backendNodeId}`), injected into DOM as `data-semantic-id`
+- **Semantic Layer** (`src/semantic/`): Chrome Accessibility Tree (CDP) analysis. `ElementCollector` extracts elements, each gets a semantic ID (`{prefix}_{label}_{backendNodeId}`), and batches DOM node resolution / `data-semantic-id` injection through CDP before interaction
 - **Browser Layer** (`src/browser/`): Puppeteer-extra with stealth plugin. `BrowserManager` manages headless/headful instances. `SessionManager` handles sessions (max 20 tabs each). `CookieStore` persists cookies across domains via CDP
 
 ### Bootstrap Flow (HTTP server)

@@ -14,6 +14,27 @@ const DEFAULT_MAX_MESSAGES = 40;
 const DEFAULT_COMPRESS_THRESHOLD = 30;
 const DEFAULT_KEEP_RECENT = 20;
 const CHARS_PER_TOKEN = 4; // rough heuristic
+const DEFAULT_RESULT_LIMIT = 80;
+const CONTENT_BEARING_RESULT_LIMIT = 400;
+const DEFAULT_SUMMARY_LIMIT = 120;
+const CONTENT_BEARING_SUMMARY_LIMIT = 420;
+// These tools return larger text or structured payloads that the agent may need
+// later for extraction, repair, or artifact follow-up. Keep more context for them.
+const CONTENT_BEARING_TOOLS = new Set([
+  'get_page_info',
+  'get_page_content',
+  'navigate_and_extract',
+  'get_artifact',
+  'get_task_run',
+  'list_task_templates',
+]);
+
+function compactToolContent(content: string, limit: number): string {
+  if (content.length <= limit) return content;
+  const head = Math.max(40, Math.floor(limit * 0.65));
+  const tail = Math.max(20, limit - head - 5);
+  return `${content.slice(0, head)} … ${content.slice(-tail)}`;
+}
 
 export class ConversationManager {
   private messages: ChatCompletionMessageParam[] = [];
@@ -169,16 +190,22 @@ export class ConversationManager {
 
         // Collect subsequent tool results
         const results: string[] = [];
+        const resultLimit = toolNames.some((name: string) => CONTENT_BEARING_TOOLS.has(name))
+          ? CONTENT_BEARING_RESULT_LIMIT
+          : DEFAULT_RESULT_LIMIT;
         let j = i + 1;
         while (j < messages.length && messages[j].role === 'tool') {
           const rawContent = messages[j].content;
           const content = typeof rawContent === 'string' ? rawContent : '';
-          results.push(content.slice(0, 80));
+          results.push(compactToolContent(content, resultLimit));
           j++;
         }
 
         const thinkPart = thinking ? `思考:"${thinking.slice(0, 60)}" ` : '';
-        parts.push(`${thinkPart}调用 ${toolNames.join(',')} → ${results.join('; ').slice(0, 120)}`);
+        const summaryLimit = resultLimit > DEFAULT_RESULT_LIMIT
+          ? CONTENT_BEARING_SUMMARY_LIMIT
+          : DEFAULT_SUMMARY_LIMIT;
+        parts.push(`${thinkPart}调用 ${toolNames.join(',')} → ${results.join('; ').slice(0, summaryLimit)}`);
         i = j;
         continue;
       }

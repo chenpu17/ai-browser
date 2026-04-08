@@ -80,6 +80,34 @@ describe('MemoryCapturer', () => {
       expect(patterns.some(p => p.type === 'page_structure')).toBe(true);
     });
 
+    it('extracts task_intent from task text and final result', () => {
+      const history: ToolCallRecord[] = [
+        { toolName: 'navigate', args: { url: 'https://example.com/orders' }, success: true, timestamp: now },
+        { toolName: 'click', args: { elementId: 'btn_submit_1' }, success: true, timestamp: now + 1 },
+      ];
+      const patterns = MemoryCapturer.extractPatterns(history, 'https://example.com/orders', {
+        taskText: '提取订单金额',
+        finalResult: { amount: 88, currency: 'CNY' },
+      });
+      const intent = patterns.find(p => p.type === 'task_intent');
+      expect(intent).toBeTruthy();
+      expect(intent?.value).toContain('提取订单金额');
+      expect(intent?.value).toContain('路径:/orders');
+      expect(intent?.value).toContain('点击btn_submit_1');
+      expect(intent?.value).toContain('"amount":88');
+    });
+
+    it('skips overly generic task_intent without actionable signal', () => {
+      const history: ToolCallRecord[] = [
+        { toolName: 'navigate', args: { url: 'https://example.com' }, success: true, timestamp: now },
+      ];
+      const patterns = MemoryCapturer.extractPatterns(history, 'https://example.com', {
+        taskText: '打开这个页面',
+        finalResult: {},
+      });
+      expect(patterns.some((p) => p.type === 'task_intent')).toBe(false);
+    });
+
     it('skips failed tool calls', () => {
       const history: ToolCallRecord[] = [
         { toolName: 'execute_javascript', args: { script: "querySelector('.fail')" }, success: false, timestamp: now },
@@ -96,6 +124,23 @@ describe('MemoryCapturer', () => {
       const patterns = MemoryCapturer.extractPatterns(history, 'https://example.com');
       const selectors = patterns.filter(p => p.value === '.dup');
       expect(selectors).toHaveLength(1);
+    });
+
+    it('splits tool history by navigated domain', () => {
+      const history: ToolCallRecord[] = [
+        { toolName: 'navigate', args: { url: 'https://a.com/home' }, success: true, timestamp: now },
+        { toolName: 'get_page_info', args: {}, success: true, timestamp: now + 1 },
+        { toolName: 'navigate_and_extract', args: { url: 'https://b.com/article' }, success: true, timestamp: now + 2 },
+        { toolName: 'get_page_content', args: {}, success: true, timestamp: now + 3 },
+      ];
+
+      const groups = MemoryCapturer.splitHistoryByDomain(history);
+
+      expect(groups).toHaveLength(2);
+      expect(groups[0]).toMatchObject({ domain: 'a.com', finalUrl: 'https://a.com/home' });
+      expect(groups[0].history).toHaveLength(2);
+      expect(groups[1]).toMatchObject({ domain: 'b.com', finalUrl: 'https://b.com/article' });
+      expect(groups[1].history).toHaveLength(2);
     });
   });
 

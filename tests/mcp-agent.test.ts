@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import path from 'path';
 import Fastify, { FastifyInstance } from 'fastify';
 import { BrowserManager } from '../src/browser/BrowserManager.js';
@@ -171,5 +171,31 @@ describe('BrowsingAgent', () => {
 
     try { await mcpClient.close(); } catch {}
     try { await mcpServer.close(); } catch {}
+  });
+
+  it('supports structured result payloads from done tool', async () => {
+    const agent = new BrowsingAgent({
+      mcpClient: { listTools: async () => ({ tools: [] }), callTool: vi.fn() } as any,
+      maxIterations: 1,
+      apiKey: 'test-key',
+      baseURL: 'http://127.0.0.1:1/v1',
+    });
+
+    (agent as any).state.iteration = 1;
+    const result = await (agent as any).executeToolCalls([
+      {
+        id: 'done_1',
+        function: {
+          name: 'done',
+          arguments: JSON.stringify({ result: { title: 'Example', price: 99 } }),
+        },
+      },
+    ]);
+
+    expect(result).toEqual({
+      success: true,
+      result: { title: 'Example', price: 99 },
+      iterations: 1,
+    });
   });
 });

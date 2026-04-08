@@ -124,7 +124,16 @@ export class BrowsingAgent extends EventEmitter {
         parameters: {
           type: 'object',
           properties: {
-            result: { type: 'string', description: '任务的最终结果描述' },
+            result: {
+              description: '任务的最终结果，可为文本或结构化 JSON',
+              anyOf: [
+                { type: 'string' },
+                { type: 'number' },
+                { type: 'boolean' },
+                { type: 'object' },
+                { type: 'array' },
+              ],
+            },
           },
           required: ['result'],
         },
@@ -240,25 +249,19 @@ export class BrowsingAgent extends EventEmitter {
     if (finalResult.success && this.knowledgeStore) {
       try {
         const history = this.toolTracker.getHistory();
-        // Find the last navigated URL from tool history
-        let lastUrl = '';
-        for (let i = history.length - 1; i >= 0; i--) {
-          if (history[i].toolName === 'navigate' && history[i].success && history[i].args.url) {
-            lastUrl = history[i].args.url;
-            break;
-          }
-        }
-        if (lastUrl) {
-          const domain = MemoryCapturer.extractDomain(lastUrl);
-          const patterns = MemoryCapturer.extractPatterns(history, lastUrl);
-          if (domain && patterns.length > 0) {
-            const existing = this.knowledgeStore.loadCard(domain);
-            const card: KnowledgeCard = existing
-              ? { ...existing, patterns: mergePatterns(existing.patterns, patterns), version: existing.version + 1, updatedAt: Date.now() }
-              : { domain, version: 1, patterns, createdAt: Date.now(), updatedAt: Date.now() };
-            this.knowledgeStore.saveCard(card);
-            console.log(`[Agent] 保存站点记忆: ${domain} (${patterns.length} 条新模式)`);
-          }
+        for (const entry of MemoryCapturer.splitHistoryByDomain(history)) {
+          const patterns = MemoryCapturer.extractPatterns(entry.history, entry.finalUrl, {
+            taskText: this.taskText,
+            finalResult: finalResult.result,
+          });
+          if (patterns.length === 0) continue;
+
+          const existing = this.knowledgeStore.loadCard(entry.domain);
+          const card: KnowledgeCard = existing
+            ? { ...existing, patterns: mergePatterns(existing.patterns, patterns), version: existing.version + 1, updatedAt: Date.now() }
+            : { domain: entry.domain, version: 1, patterns, createdAt: Date.now(), updatedAt: Date.now() };
+          this.knowledgeStore.saveCard(card);
+          console.log(`[Agent] 保存站点记忆: ${entry.domain} (${patterns.length} 条新模式)`);
         }
       } catch { /* non-critical */ }
     }
@@ -387,8 +390,9 @@ export class BrowsingAgent extends EventEmitter {
       this.emitEvent({ type: 'tool_call', name, args, iteration: this.state.iteration });
 
       if (name === 'done') {
-        const result = args.result || '任务完成';
-        console.log(`[Agent] 任务完成: ${result}`);
+        const result = args.result ?? '任务完成';
+        const preview = typeof result === 'string' ? result : JSON.stringify(result);
+        console.log(`[Agent] 任务完成: ${preview}`);
         this.state.done = true;
         return { success: true, result, iterations: this.state.iteration };
       }
