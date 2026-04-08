@@ -323,7 +323,7 @@ export class MemoryCapturer {
   }
 
   private static isGenericTask(taskText: string): boolean {
-    const normalized = taskText.trim().toLowerCase();
+    const normalized = taskText.trim();
     return /^(打开|浏览|看看|查看|总结|探索|open|visit|browse|explore|summarize)/i.test(normalized);
   }
 }

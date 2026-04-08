@@ -91,6 +91,7 @@ export class ContentExtractor {
       const W_SEMANTIC = 0.2;
       const W_CONTEXT = 0.18;
       const W_LENGTH = 0.08;
+      // The weights intentionally sum to 1.0 so the final attention score remains normalized.
       // Below-the-fold content remains important on long articles and list pages,
       // so we soften the penalty until roughly three viewport heights away.
       const OFFSCREEN_DISTANCE_MULTIPLIER = 3;

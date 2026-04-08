@@ -3,6 +3,7 @@ import type { CancelToken } from '../cancel-token.js';
 import * as actions from '../tool-actions.js';
 import { safePageTitle } from '../../utils/safe-page.js';
 import { ErrorCode } from '../error-codes.js';
+import { resolveTemplateElementId } from './shared.js';
 
 // ===== Input / Output types =====
 
@@ -59,63 +60,13 @@ async function resolveElementId(
   selector?: string,
   query?: string,
 ): Promise<string> {
-  if (mode === 'selector') {
-    if (!selector) {
-      throw makeError('selector is required in selector mode', ErrorCode.INVALID_PARAMETER);
-    }
-
-    const tab = ctx.getTab(sessionId, tabId);
-    if (!tab) {
-      throw makeError(`Tab not found: ${tabId}`, ErrorCode.SESSION_NOT_FOUND);
-    }
-
-    // Ensure semantic IDs are injected before reading data-semantic-id from DOM.
-    await actions.getPageInfo(ctx, sessionId, tabId, {
-      maxElements: 200,
-      visibleOnly: false,
-    });
-
-    try {
-      const semanticId = await tab.page.$eval(selector, (el) => {
-        return (el as any).getAttribute('data-semantic-id') || (() => {
-          const generated = `manual_${Math.random().toString(36).slice(2, 10)}`;
-          (el as HTMLElement).setAttribute('data-semantic-id', generated);
-          return generated;
-        })();
-      });
-      if (semanticId) {
-        return semanticId;
-      }
-      throw makeError(
-        `Field found but missing semantic id: ${selector}`,
-        ErrorCode.TPL_LOGIN_FIELD_NOT_FOUND,
-      );
-    } catch (err: any) {
-      const msg = String(err?.message || '');
-      if (msg.includes('Failed to execute') || msg.includes('is not a valid selector')) {
-        throw makeError(`Invalid selector: ${selector}`, ErrorCode.INVALID_PARAMETER);
-      }
-      if ((err as any).errorCode) {
-        throw err;
-      }
-      throw makeError(
-        `Field not found for selector: ${selector}`,
-        ErrorCode.TPL_LOGIN_FIELD_NOT_FOUND,
-      );
-    }
-  }
-
-  if (!query) {
-    throw makeError('query is required in semantic mode', ErrorCode.INVALID_PARAMETER);
-  }
-  const result = await actions.findElement(ctx, sessionId, tabId, query, 1);
-  if (result.candidates.length === 0) {
-    throw makeError(
-      `Field not found for query: ${query}`,
-      ErrorCode.TPL_LOGIN_FIELD_NOT_FOUND,
-    );
-  }
-  return result.candidates[0].id;
+  return resolveTemplateElementId(
+    ctx,
+    sessionId,
+    tabId,
+    mode === 'selector' ? { mode, selector } : { mode, query },
+    ErrorCode.TPL_LOGIN_FIELD_NOT_FOUND,
+  );
 }
 
 async function waitForSuccessIndicator(
