@@ -577,6 +577,10 @@ function hasValidLoginKeepSessionInputs(inputs?: Record<string, unknown>): boole
   if (!username || !password) return false;
 
   const mode = fields.mode;
+  if (mode !== 'selector' && mode !== 'semantic') {
+    return false;
+  }
+
   if (mode === 'selector') {
     return typeof fields.usernameSelector === 'string'
       && fields.usernameSelector.trim().length > 0

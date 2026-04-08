@@ -151,7 +151,7 @@ export class MemoryCapturer {
       }
     }
 
-    const taskIntent = this.buildTaskIntentPattern(finalUrl, now, options.taskText, options.finalResult);
+    const taskIntent = this.buildTaskIntentPattern(options.taskText, options.finalResult, finalUrl, now);
     if (taskIntent && !seen.has(taskIntent.value)) {
       seen.add(taskIntent.value);
       patterns.push(taskIntent);
@@ -224,10 +224,10 @@ export class MemoryCapturer {
   }
 
   private static buildTaskIntentPattern(
-    finalUrl: string,
-    now: number,
     taskText?: string,
     finalResult?: unknown,
+    finalUrl?: string,
+    now = Date.now(),
   ): SitePattern | null {
     const normalizedTask = taskText?.trim();
     if (!normalizedTask) return null;
@@ -241,7 +241,7 @@ export class MemoryCapturer {
       type: 'task_intent',
       description: `任务经验: ${normalizedTask.slice(0, 120)}`,
       value: value.slice(0, 400),
-      urlPattern: this.extractPath(finalUrl),
+      urlPattern: this.extractPath(finalUrl ?? ''),
       confidence: 0.7,
       useCount: 1,
       lastUsedAt: now,
