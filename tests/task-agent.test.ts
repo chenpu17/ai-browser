@@ -72,6 +72,73 @@ describe('TaskAgent', () => {
     expect(plan[0].templateId).toBe('login_keep_session');
   });
 
+  it('plans search_extract when search inputs are complete', () => {
+    const mcpClient = { callTool: vi.fn() } as any;
+    const agent = new TaskAgent({ mcpClient });
+
+    const plan = agent.plan({
+      goal: '搜索最新文章并提取内容',
+      inputs: {
+        startUrl: 'https://example.com/search',
+        query: 'ai browser',
+        searchField: {
+          mode: 'selector',
+          selector: 'input[type="search"]',
+        },
+      },
+    });
+
+    expect(plan).toHaveLength(1);
+    expect(plan[0].type).toBe('template');
+    expect(plan[0].templateId).toBe('search_extract');
+  });
+
+  it('falls back to agent_goal when search_extract inputs are incomplete', () => {
+    const mcpClient = { callTool: vi.fn() } as any;
+    const agent = new TaskAgent({ mcpClient });
+
+    const plan = agent.plan({
+      goal: '搜索最新文章并提取内容',
+      inputs: {
+        startUrl: 'https://example.com/search',
+        query: 'ai browser',
+      },
+    });
+
+    expect(plan).toHaveLength(1);
+    expect(plan[0].type).toBe('agent_goal');
+  });
+
+  it('plans submit_and_verify when form submission inputs are complete', () => {
+    const mcpClient = { callTool: vi.fn() } as any;
+    const agent = new TaskAgent({ mcpClient });
+
+    const plan = agent.plan({
+      goal: '填写表单并提交后验证成功提示',
+      inputs: {
+        startUrl: 'https://example.com/form',
+        fields: [
+          {
+            name: 'email',
+            value: 'alice@example.com',
+            locator: {
+              mode: 'selector',
+              selector: '#email',
+            },
+          },
+        ],
+        successIndicator: {
+          type: 'textIncludes',
+          value: 'Success',
+        },
+      },
+    });
+
+    expect(plan).toHaveLength(1);
+    expect(plan[0].type).toBe('template');
+    expect(plan[0].templateId).toBe('submit_and_verify');
+  });
+
   it('executes template flow and verifies output schema', async () => {
     const callTool = vi.fn(async ({ name }: { name: string }) => {
       if (name === 'run_task_template') {

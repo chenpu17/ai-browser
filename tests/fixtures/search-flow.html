@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Search Flow</title>
+</head>
+<body>
+  <main>
+    <h1>Search Portal</h1>
+    <form id="search-form">
+      <label for="search-box">Search</label>
+      <input id="search-box" type="search" placeholder="Search articles">
+      <button id="search-submit" type="submit">Search</button>
+    </form>
+    <div id="results" aria-live="polite"></div>
+  </main>
+  <script>
+    document.getElementById('search-form').addEventListener('submit', function (event) {
+      event.preventDefault();
+      const query = document.getElementById('search-box').value || 'default';
+      const results = document.getElementById('results');
+      document.title = 'Search Results';
+      results.innerHTML = '<p>Results for: ' + query + '</p><a class="result-link" href="article.html">Open article</a>';
+    });
+  </script>
+</body>
+</html>

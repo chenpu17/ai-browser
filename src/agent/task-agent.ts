@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { hasValidTemplateInputs } from '../task/templates/validation.js';
 
 const TERMINAL_STATUSES = new Set([
   'succeeded',
@@ -501,6 +502,68 @@ function defaultPlannerRules(): PlannerRule[] {
         };
       },
     },
+    {
+      id: 'search_extract_by_inputs_or_goal',
+      match(taskSpec: TaskSpec): boolean {
+        const goal = taskSpec.goal.toLowerCase();
+        return Boolean(taskSpec.inputs?.query) && (
+          Boolean(taskSpec.inputs?.searchField)
+          || goal.includes('search')
+          || goal.includes('搜索')
+        );
+      },
+      buildStep(taskSpec: TaskSpec): PlanStep {
+        return {
+          id: 'step_1',
+          type: 'template',
+          templateId: 'search_extract',
+          inputs: taskSpec.inputs,
+        };
+      },
+    },
+    {
+      id: 'paginated_extract_by_inputs_or_goal',
+      match(taskSpec: TaskSpec): boolean {
+        const goal = taskSpec.goal.toLowerCase();
+        return Boolean(taskSpec.inputs?.pagination) && (
+          goal.includes('分页')
+          || goal.includes('下一页')
+          || goal.includes('翻页')
+          || goal.includes('page')
+          || goal.includes('pagination')
+        );
+      },
+      buildStep(taskSpec: TaskSpec): PlanStep {
+        return {
+          id: 'step_1',
+          type: 'template',
+          templateId: 'paginated_extract',
+          inputs: taskSpec.inputs,
+        };
+      },
+    },
+    {
+      id: 'submit_and_verify_by_inputs_or_goal',
+      match(taskSpec: TaskSpec): boolean {
+        const goal = taskSpec.goal.toLowerCase();
+        return Array.isArray(taskSpec.inputs?.fields) && (
+          goal.includes('submit')
+          || goal.includes('提交')
+          || goal.includes('保存')
+          || goal.includes('confirm')
+          || goal.includes('verify')
+          || goal.includes('验证')
+        );
+      },
+      buildStep(taskSpec: TaskSpec): PlanStep {
+        return {
+          id: 'step_1',
+          type: 'template',
+          templateId: 'submit_and_verify',
+          inputs: taskSpec.inputs,
+        };
+      },
+    },
   ];
 }
 
@@ -536,64 +599,6 @@ function buildAgentGoalPrompt(taskSpec: TaskSpec, goal: string): string {
   }
 
   return sections.join('\n\n');
-}
-
-function hasValidTemplateInputs(templateId?: string, inputs?: Record<string, unknown>): boolean {
-  if (!templateId) return false;
-
-  switch (templateId) {
-    case 'batch_extract_pages':
-      return hasNonEmptyStringArray(inputs?.urls);
-    case 'multi_tab_compare':
-      return hasStringArrayWithMinLength(inputs?.urls, 2);
-    case 'login_keep_session':
-      return hasValidLoginKeepSessionInputs(inputs);
-    default:
-      return true;
-  }
-}
-
-function hasStringArrayWithMinLength(value: unknown, minLength: number): value is string[] {
-  return Array.isArray(value)
-    && value.length >= minLength
-    && value.every((item) => typeof item === 'string' && item.trim().length > 0);
-}
-
-function hasNonEmptyStringArray(value: unknown): value is string[] {
-  return hasStringArrayWithMinLength(value, 1);
-}
-
-function hasValidLoginKeepSessionInputs(inputs?: Record<string, unknown>): boolean {
-  if (!inputs || typeof inputs !== 'object') return false;
-
-  const startUrl = typeof inputs.startUrl === 'string' ? inputs.startUrl.trim() : '';
-  const credentials = inputs.credentials as Record<string, unknown> | undefined;
-  const fields = inputs.fields as Record<string, unknown> | undefined;
-
-  if (!startUrl || !credentials || !fields) return false;
-
-  const username = typeof credentials.username === 'string' ? credentials.username.trim() : '';
-  const password = typeof credentials.password === 'string' ? credentials.password.trim() : '';
-  if (!username || !password) return false;
-
-  const mode = fields.mode;
-  if (mode !== 'selector' && mode !== 'semantic') {
-    return false;
-  }
-
-  if (mode === 'selector') {
-    return hasNonEmptyFieldValues(fields, 'usernameSelector', 'passwordSelector');
-  }
-
-  if (mode === 'semantic') {
-    return hasNonEmptyFieldValues(fields, 'usernameQuery', 'passwordQuery');
-  }
-
-  return false;
-}
-
-function hasNonEmptyFieldValues(fields: Record<string, unknown>, ...fieldNames: string[]): boolean {
-  return fieldNames.every((fieldName) => typeof fields[fieldName] === 'string' && fields[fieldName].trim().length > 0);
 }
 
 function verifyAgainstSchema(data: unknown, schema?: {

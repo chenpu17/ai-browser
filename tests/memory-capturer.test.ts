@@ -83,6 +83,7 @@ describe('MemoryCapturer', () => {
     it('extracts task_intent from task text and final result', () => {
       const history: ToolCallRecord[] = [
         { toolName: 'navigate', args: { url: 'https://example.com/orders' }, success: true, timestamp: now },
+        { toolName: 'click', args: { elementId: 'btn_submit_1' }, success: true, timestamp: now + 1 },
       ];
       const patterns = MemoryCapturer.extractPatterns(history, 'https://example.com/orders', {
         taskText: '提取订单金额',
@@ -91,7 +92,20 @@ describe('MemoryCapturer', () => {
       const intent = patterns.find(p => p.type === 'task_intent');
       expect(intent).toBeTruthy();
       expect(intent?.value).toContain('提取订单金额');
+      expect(intent?.value).toContain('路径:/orders');
+      expect(intent?.value).toContain('点击btn_submit_1');
       expect(intent?.value).toContain('"amount":88');
+    });
+
+    it('skips overly generic task_intent without actionable signal', () => {
+      const history: ToolCallRecord[] = [
+        { toolName: 'navigate', args: { url: 'https://example.com' }, success: true, timestamp: now },
+      ];
+      const patterns = MemoryCapturer.extractPatterns(history, 'https://example.com', {
+        taskText: '打开这个页面',
+        finalResult: {},
+      });
+      expect(patterns.some((p) => p.type === 'task_intent')).toBe(false);
     });
 
     it('skips failed tool calls', () => {

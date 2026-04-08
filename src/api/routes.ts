@@ -24,6 +24,9 @@ import type { KnowledgeCard, SitePattern } from '../memory/types.js';
 import { config } from '../agent/config.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import * as toolActions from '../task/tool-actions.js';
+import type { ToolContext } from '../task/tool-context.js';
+import { ErrorCode as TaskErrorCode } from '../task/error-codes.js';
 
 const MAX_BATCH_ACTIONS = 50;
 
@@ -42,6 +45,70 @@ export function registerRoutes(
 
   // Session recorders — declared early so session close can clean up
   const recorders = new Map<string, SessionRecorder>();
+
+  async function saveCookiesFromPage(page: import('puppeteer-core').Page): Promise<void> {
+    try {
+      const client = await page.createCDPSession();
+      try {
+        const { cookies } = await client.send('Network.getAllCookies');
+        cookieStore?.save(page.url(), cookies as any[]);
+      } finally {
+        await client.detach().catch(() => {});
+      }
+    } catch {}
+  }
+
+  async function injectCookiesToPage(page: import('puppeteer-core').Page): Promise<void> {
+    try {
+      const allCookies = cookieStore?.getAll() ?? [];
+      if (allCookies.length === 0) return;
+      const client = await page.createCDPSession();
+      try {
+        await client.send('Network.setCookies', { cookies: allCookies as any[] });
+      } finally {
+        await client.detach().catch(() => {});
+      }
+    } catch {}
+  }
+
+  const toolCtx: ToolContext = {
+    sessionManager,
+    cookieStore,
+    urlOpts: { allowFile: true, blockPrivate: false },
+    trustLevel: 'local',
+    resolveSession: async (sessionId?: string) => {
+      if (!sessionId) throw new Error('sessionId is required');
+      return sessionId;
+    },
+    getActiveTab: (sessionId: string) => {
+      const tab = sessionManager.getActiveTab(sessionId);
+      if (!tab) {
+        const err = new Error(`Session or active tab not found: ${sessionId}`);
+        (err as any).errorCode = TaskErrorCode.SESSION_NOT_FOUND;
+        throw err;
+      }
+      return tab;
+    },
+    getTab: (sessionId: string, tabId: string) => sessionManager.getTab(sessionId, tabId),
+    injectCookies: injectCookiesToPage,
+    saveCookies: saveCookiesFromPage,
+  };
+
+  function toApiError(err: any, fallbackMessage: string): ApiError {
+    const message = err?.message || fallbackMessage;
+    switch (err?.errorCode) {
+      case TaskErrorCode.SESSION_NOT_FOUND:
+        return new ApiError(ErrorCode.SESSION_NOT_FOUND, message, 404);
+      case TaskErrorCode.INVALID_PARAMETER:
+        return new ApiError(ErrorCode.INVALID_REQUEST, message, 400);
+      case TaskErrorCode.NAVIGATION_TIMEOUT:
+        return new ApiError(ErrorCode.PAGE_LOAD_TIMEOUT, message, 504);
+      case TaskErrorCode.ELEMENT_NOT_FOUND:
+        return new ApiError(ErrorCode.INVALID_REQUEST, message, 404);
+      default:
+        return new ApiError(ErrorCode.ACTION_FAILED, message, 400);
+    }
+  }
 
   // 健康检查
   app.get('/health', async () => {
@@ -232,31 +299,25 @@ export function registerRoutes(
       if (typeof url !== 'string') {
         throw new ApiError(ErrorCode.INVALID_REQUEST, 'URL must be a string', 400);
       }
-      const check = validateUrl(url);
+      const check = validateUrl(url, { allowFile: true, blockPrivate: false });
       if (!check.valid) {
         throw new ApiError(ErrorCode.INVALID_REQUEST, check.reason, 400);
       }
     }
 
-    let tab;
+    let created;
     try {
-      tab = await sessionManager.createTab(sessionId);
+      created = await toolActions.createTab(toolCtx, sessionId, url);
     } catch (err: any) {
-      throw new ApiError(ErrorCode.INVALID_REQUEST, err.message, 400);
-    }
-    if (!tab) {
-      throw new ApiError(ErrorCode.INTERNAL_ERROR, 'Failed to create tab', 500);
+      throw toApiError(err, 'Failed to create tab');
     }
 
-    // 如果提供了URL，直接导航
-    if (url) {
-      await tab.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      tab.url = tab.page.url();
-    }
+    const tab = sessionManager.getTab(sessionId, created.tabId);
+    if (!tab) throw new ApiError(ErrorCode.INTERNAL_ERROR, 'Failed to create tab', 500);
 
     return {
-      tabId: tab.id,
-      url: tab.url,
+      tabId: created.tabId,
+      url: created.url,
       title: await safePageTitle(tab.page),
     };
   });
@@ -283,9 +344,10 @@ export function registerRoutes(
   // 关闭Tab
   app.delete('/v1/sessions/:sessionId/tabs/:tabId', async (request) => {
     const { sessionId, tabId } = request.params as any;
-    const closed = await sessionManager.closeTab(sessionId, tabId);
-    if (!closed) {
-      throw new ApiError(ErrorCode.INVALID_REQUEST, 'Tab not found', 404);
+    try {
+      await toolActions.closeTab(toolCtx, sessionId, tabId);
+    } catch (err: any) {
+      throw toApiError(err, 'Tab not found');
     }
     return { success: true };
   });
@@ -309,7 +371,7 @@ export function registerRoutes(
     if (!url || typeof url !== 'string') {
       throw new ApiError(ErrorCode.INVALID_REQUEST, 'URL is required', 400);
     }
-    const check = validateUrl(url);
+    const check = validateUrl(url, { allowFile: true, blockPrivate: false });
     if (!check.valid) {
       throw new ApiError(ErrorCode.INVALID_REQUEST, check.reason, 400);
     }
@@ -328,15 +390,10 @@ export function registerRoutes(
     }
 
     try {
-      await tab.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await toolActions.navigate(toolCtx, sessionId, url);
     } catch (err: any) {
-      if (err.name === 'TimeoutError') {
-        throw new ApiError(ErrorCode.PAGE_LOAD_TIMEOUT, `Navigation timeout: ${url}`, 504);
-      }
-      throw new ApiError(ErrorCode.ACTION_FAILED, err.message || 'Navigation failed', 502);
+      throw toApiError(err, 'Navigation failed');
     }
-    tab.url = tab.page.url();
-    sessionManager.updateActivity(sessionId);
     return {
       success: true,
       tabId: tab.id,
@@ -364,24 +421,20 @@ export function registerRoutes(
       throw new ApiError(ErrorCode.INVALID_REQUEST, 'Tab not found', 404);
     }
 
-    const [elements, analysis, regions] = await Promise.all([
-      elementCollector.collect(tab.page),
-      pageAnalyzer.analyze(tab.page),
-      regionDetector.detect(tab.page),
-    ]);
-    sessionManager.updateActivity(sessionId);
+    let result;
+    try {
+      result = await toolActions.getPageInfo(toolCtx, sessionId, tab.id, { visibleOnly: false, maxElements: 200 });
+    } catch (err: any) {
+      throw toApiError(err, 'Failed to get page info');
+    }
 
     return {
       tabId: tab.id,
-      page: {
-        url: tab.page.url(),
-        title: await safePageTitle(tab.page),
-        type: analysis.pageType,
-        summary: analysis.summary,
-      },
-      elements,
-      regions,
-      intents: analysis.intents,
+      page: result.page,
+      elements: result.elements,
+      regions: result.regions,
+      intents: result.intents,
+      recommendedByIntent: result.recommendedByIntent,
     };
   });
 
@@ -495,9 +548,12 @@ export function registerRoutes(
       throw new ApiError(ErrorCode.INVALID_REQUEST, 'Tab not found', 404);
     }
 
-    const content = await contentExtractor.extract(tab.page);
-    sessionManager.updateActivity(sessionId);
-    return { tabId: tab.id, ...content };
+    try {
+      const content = await toolActions.getPageContent(toolCtx, sessionId, tab.id);
+      return { tabId: tab.id, ...content };
+    } catch (err: any) {
+      throw toApiError(err, 'Failed to get page content');
+    }
   });
 
   // iframe信息（支持tabId）
@@ -543,21 +599,15 @@ export function registerRoutes(
       throw new ApiError(ErrorCode.INVALID_REQUEST, 'Tab not found', 404);
     }
 
-    const elements = await elementCollector.collect(tab.page);
-    const candidates = elementMatcher.findByQuery(elements, query, limit || 5);
-    sessionManager.updateActivity(sessionId);
-
-    return {
-      tabId: tab.id,
-      query,
-      candidates: candidates.map((c) => ({
-        id: c.element.id,
-        label: c.element.label,
-        type: c.element.type,
-        score: c.score,
-        matchReason: c.matchReason,
-      })),
-    };
+    try {
+      const result = await toolActions.findElement(toolCtx, sessionId, tab.id, query, limit || 5);
+      return {
+        tabId: tab.id,
+        ...result,
+      };
+    } catch (err: any) {
+      throw toApiError(err, 'Failed to match elements');
+    }
   });
 
   // 并发获取多个Tab的内容（AI批量浏览场景）

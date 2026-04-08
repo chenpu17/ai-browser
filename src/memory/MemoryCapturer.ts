@@ -151,7 +151,7 @@ export class MemoryCapturer {
       }
     }
 
-    const taskIntent = this.buildTaskIntentPattern(options.taskText, options.finalResult, finalUrl, now);
+    const taskIntent = this.buildTaskIntentPattern(toolHistory, options.taskText, options.finalResult, finalUrl, now);
     if (taskIntent && !seen.has(taskIntent.value)) {
       seen.add(taskIntent.value);
       patterns.push(taskIntent);
@@ -224,6 +224,7 @@ export class MemoryCapturer {
   }
 
   private static buildTaskIntentPattern(
+    toolHistory: readonly ToolCallRecord[],
     taskText?: string,
     finalResult?: unknown,
     finalUrl?: string,
@@ -232,17 +233,28 @@ export class MemoryCapturer {
     const normalizedTask = taskText?.trim();
     if (!normalizedTask) return null;
 
+    const actionHints = this.summarizeActionHints(toolHistory, finalUrl);
+    const actionableHints = actionHints.filter((hint) => !hint.startsWith('落点'));
     const resultPreview = this.summarizeResult(finalResult);
-    const value = resultPreview
-      ? `${normalizedTask} → ${resultPreview}`
-      : normalizedTask.slice(0, 300);
+    if (normalizedTask.length < 4) return null;
+    if (this.isGenericTask(normalizedTask) && actionableHints.length === 0 && !resultPreview) {
+      return null;
+    }
+
+    const parts = [
+      normalizedTask.slice(0, 180),
+      finalUrl ? `路径:${this.extractPath(finalUrl) || finalUrl}` : '',
+      actionHints.length > 0 ? `关键步骤:${actionHints.join(', ')}` : '',
+      resultPreview ? `结果:${resultPreview}` : '',
+    ].filter(Boolean);
+    const value = parts.join(' | ');
 
     return {
       type: 'task_intent',
       description: `任务经验: ${normalizedTask.slice(0, 120)}`,
       value: value.slice(0, 400),
       urlPattern: this.extractPath(finalUrl ?? ''),
-      confidence: 0.7,
+      confidence: actionHints.length > 0 ? 0.8 : 0.7,
       useCount: 1,
       lastUsedAt: now,
       createdAt: now,
@@ -253,12 +265,66 @@ export class MemoryCapturer {
   private static summarizeResult(finalResult: unknown): string {
     if (finalResult === null || finalResult === undefined) return '';
     if (typeof finalResult === 'string') return finalResult.slice(0, 200);
+    if (typeof finalResult === 'object' && !Array.isArray(finalResult) && Object.keys(finalResult as Record<string, unknown>).length === 0) {
+      return '';
+    }
 
     try {
       return JSON.stringify(finalResult).slice(0, 200);
     } catch {
       return String(finalResult).slice(0, 200);
     }
+  }
+
+  private static summarizeActionHints(toolHistory: readonly ToolCallRecord[], finalUrl?: string): string[] {
+    const hints: string[] = [];
+    const seen = new Set<string>();
+
+    if (finalUrl) {
+      const path = this.extractPath(finalUrl);
+      if (path) {
+        hints.push(`落点${path}`);
+        seen.add(`path:${path}`);
+      }
+    }
+
+    for (const call of toolHistory) {
+      if (!call.success) continue;
+
+      if (call.toolName === 'find_element' && typeof call.args.query === 'string') {
+        const query = call.args.query.trim();
+        if (query && !seen.has(`query:${query}`)) {
+          seen.add(`query:${query}`);
+          hints.push(`查找${query.slice(0, 30)}`);
+        }
+      }
+
+      if (call.toolName === 'click' && typeof call.args.elementId === 'string') {
+        const elementId = call.args.elementId.trim();
+        if (elementId && !seen.has(`click:${elementId}`)) {
+          seen.add(`click:${elementId}`);
+          hints.push(`点击${elementId.slice(0, 30)}`);
+        }
+      }
+
+      if (call.toolName === 'execute_javascript') {
+        const script = String(call.args.script || call.args.code || '');
+        const match = script.match(/querySelector(?:All)?\(\s*['"`]([^'"`]+)['"`]\s*\)/);
+        if (match?.[1] && !seen.has(`selector:${match[1]}`)) {
+          seen.add(`selector:${match[1]}`);
+          hints.push(`选择器${match[1].slice(0, 30)}`);
+        }
+      }
+
+      if (hints.length >= 3) break;
+    }
+
+    return hints.slice(0, 3);
+  }
+
+  private static isGenericTask(taskText: string): boolean {
+    const normalized = taskText.trim().toLowerCase();
+    return /^(打开|浏览|看看|查看|总结|探索|open|visit|browse|explore|summarize)/i.test(normalized);
   }
 }
 

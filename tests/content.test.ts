@@ -29,4 +29,18 @@ describe('ContentExtractor', () => {
     expect(allText).toContain('Article Title');
     await page.close();
   });
+
+  it('keeps long-page sections in reading order with offscreen content', async () => {
+    const page = await browserManager.newPage();
+    const filePath = path.resolve('tests/fixtures/long-page.html');
+    await page.goto(`file://${filePath}`);
+
+    const content = await contentExtractor.extract(page);
+    const joined = content.sections.map((s: any) => s.text).join(' ');
+    expect(joined).toContain('Section 1');
+    expect(joined).toContain('Section 5');
+    expect(content.sections.findIndex((s: any) => s.text.includes('Section 1')))
+      .toBeLessThan(content.sections.findIndex((s: any) => s.text.includes('Section 5')));
+    await page.close();
+  });
 });

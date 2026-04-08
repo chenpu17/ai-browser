@@ -21,11 +21,20 @@ const CONTENT_BEARING_SUMMARY_LIMIT = 420;
 // These tools return larger text or structured payloads that the agent may need
 // later for extraction, repair, or artifact follow-up. Keep more context for them.
 const CONTENT_BEARING_TOOLS = new Set([
+  'get_page_info',
   'get_page_content',
   'navigate_and_extract',
   'get_artifact',
   'get_task_run',
+  'list_task_templates',
 ]);
+
+function compactToolContent(content: string, limit: number): string {
+  if (content.length <= limit) return content;
+  const head = Math.max(40, Math.floor(limit * 0.65));
+  const tail = Math.max(20, limit - head - 5);
+  return `${content.slice(0, head)} … ${content.slice(-tail)}`;
+}
 
 export class ConversationManager {
   private messages: ChatCompletionMessageParam[] = [];
@@ -188,7 +197,7 @@ export class ConversationManager {
         while (j < messages.length && messages[j].role === 'tool') {
           const rawContent = messages[j].content;
           const content = typeof rawContent === 'string' ? rawContent : '';
-          results.push(content.slice(0, resultLimit));
+          results.push(compactToolContent(content, resultLimit));
           j++;
         }
 

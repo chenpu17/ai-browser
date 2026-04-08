@@ -4,6 +4,7 @@ export interface ContentSection {
   tag: string;        // 语义标签：h1, h2, p, li, blockquote 等
   text: string;       // 文本内容
   attention: number;  // 0-1 注意力分值
+  heading?: string;   // 最近的标题上下文
 }
 
 export interface ExtractedContent {
@@ -46,9 +47,26 @@ export class ContentExtractor {
       // 收集所有块级内容节点
       const nodes = Array.from(document.querySelectorAll(blockSelector));
 
+      const getHeadingText = (el: HTMLElement): string => {
+        if (/^h[1-6]$/i.test(el.tagName)) return (el.textContent || '').trim().slice(0, 120);
+        let current: HTMLElement | null = el;
+        while (current) {
+          let sibling: Element | null = current.previousElementSibling;
+          while (sibling) {
+            if (/^H[1-6]$/.test(sibling.tagName)) {
+              return (sibling.textContent || '').trim().slice(0, 120);
+            }
+            sibling = sibling.previousElementSibling;
+          }
+          current = current.parentElement;
+        }
+        return '';
+      };
+
       // 第一遍：收集字号，找最大值（避免二次 getComputedStyle）
-      const nodeStyles: Array<{ el: HTMLElement; style: CSSStyleDeclaration; fontSize: number }> = [];
+      const nodeStyles: Array<{ el: HTMLElement; style: CSSStyleDeclaration; fontSize: number; order: number; inMain: boolean; heading: string }> = [];
       let maxFontSize = 16;
+      let order = 0;
       for (const node of nodes) {
         const el = node as HTMLElement;
         if (el.closest(hiddenSelector)) continue;
@@ -56,20 +74,29 @@ export class ContentExtractor {
         if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
         const fontSize = parseFloat(style.fontSize);
         if (fontSize > maxFontSize) maxFontSize = fontSize;
-        nodeStyles.push({ el, style, fontSize });
+        nodeStyles.push({
+          el,
+          style,
+          fontSize,
+          order: order++,
+          inMain: Boolean(el.closest('main, article, [role="main"], [role="article"]')),
+          heading: getHeadingText(el),
+        });
       }
 
       // 权重
-      const W_POSITION = 0.35;
-      const W_AREA = 0.25;
-      const W_FONTSIZE = 0.15;
-      const W_SEMANTIC = 0.25;
+      const W_POSITION = 0.22;
+      const W_AREA = 0.2;
+      const W_FONTSIZE = 0.12;
+      const W_SEMANTIC = 0.2;
+      const W_CONTEXT = 0.18;
+      const W_LENGTH = 0.08;
 
       // 用于嵌套去重：记录已收录的文本
       const seenTexts = new Set<string>();
-      const sections: Array<{ tag: string; text: string; attention: number }> = [];
+      const sections: Array<{ tag: string; text: string; attention: number; heading?: string; order: number }> = [];
 
-      for (const { el, style, fontSize } of nodeStyles) {
+      for (const { el, fontSize, order, inMain, heading } of nodeStyles) {
         // 提取文本
         const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
         if (!text || text.length < 2) continue;
@@ -87,11 +114,11 @@ export class ContentExtractor {
         const elCenterX = rect.left + rect.width / 2;
         const elCenterY = rect.top + rect.height / 2;
         const dist = Math.sqrt((elCenterX - viewportCenterX) ** 2 + (elCenterY - viewportCenterY) ** 2);
+        const verticalDistance = Math.abs(elCenterY - viewportCenterY);
         let positionScore = 1 - Math.min(dist / maxDistance, 1);
-        // 首屏加分
-        if (rect.top >= 0 && rect.bottom <= viewportH) {
-          positionScore = Math.min(positionScore + 0.2, 1);
-        }
+        const offscreenPenalty = Math.min(verticalDistance / (viewportH * 3), 1);
+        positionScore = Math.max(positionScore, 1 - offscreenPenalty);
+        if (rect.top >= 0 && rect.bottom <= viewportH) positionScore = Math.min(positionScore + 0.15, 1);
 
         // 2. 面积分值（sqrt 归一化，避免文本块分值趋近于零）
         const area = rect.width * rect.height;
@@ -102,30 +129,37 @@ export class ContentExtractor {
 
         // 4. 语义分值
         const semanticScore = semanticScores[tag] ?? 0.3;
+        const contextScore = inMain ? 1 : 0.45;
+        const lengthScore = Math.min(text.length / 240, 1);
 
         // 综合注意力分值
         const attention = W_POSITION * positionScore
           + W_AREA * areaScore
           + W_FONTSIZE * fontSizeScore
-          + W_SEMANTIC * semanticScore;
+          + W_SEMANTIC * semanticScore
+          + W_CONTEXT * contextScore
+          + W_LENGTH * lengthScore;
 
         sections.push({
           tag,
           text: text.slice(0, 500),
           attention: Math.round(attention * 1000) / 1000,
+          heading: heading || undefined,
+          order,
         });
       }
 
-      // 按注意力降序排列，截取前50个
-      sections.sort((a, b) => b.attention - a.attention);
-      let topSections = sections.slice(0, 50);
+      // 先按注意力筛选，再按文档顺序输出，提升长正文可读性
+      sections.sort((a, b) => b.attention - a.attention || a.order - b.order);
+      let topSections = sections.slice(0, 50).sort((a, b) => a.order - b.order);
 
       // Fallback: SPA 站点可能不使用语义标签，从 div/section/article/span 中提取文本
       if (topSections.length < 3) {
         const fallbackSelector = 'div, section, article, main, [role="article"], [role="main"]';
         const fallbackNodes = Array.from(document.querySelectorAll(fallbackSelector));
-        const fallbackSections: Array<{ tag: string; text: string; attention: number }> = [];
+        const fallbackSections: Array<{ tag: string; text: string; attention: number; heading?: string; order: number }> = [];
         const fallbackSeen = new Set(seenTexts);
+        let fallbackOrder = order;
 
         for (const node of fallbackNodes) {
           const el = node as HTMLElement;
@@ -161,11 +195,14 @@ export class ContentExtractor {
             tag: el.tagName.toLowerCase(),
             text: text.slice(0, 500),
             attention: Math.round((posScore * 0.5 + areaScore * 0.5) * 1000) / 1000,
+            heading: getHeadingText(el) || undefined,
+            order: fallbackOrder++,
           });
         }
 
-        fallbackSections.sort((a, b) => b.attention - a.attention);
-        topSections = [...topSections, ...fallbackSections.slice(0, 50 - topSections.length)];
+        fallbackSections.sort((a, b) => b.attention - a.attention || a.order - b.order);
+        topSections = [...topSections, ...fallbackSections.slice(0, 50 - topSections.length)]
+          .sort((a, b) => a.order - b.order);
       }
 
       // Last resort: if still no content, use innerText split into chunks
@@ -177,7 +214,7 @@ export class ContentExtractor {
           for (const line of lines) {
             if (chunk.length + line.length > 400) {
               if (chunk.trim()) {
-                topSections.push({ tag: 'div', text: chunk.trim(), attention: 0.3 });
+                topSections.push({ tag: 'div', text: chunk.trim(), attention: 0.3, order: topSections.length });
               }
               chunk = line;
               if (topSections.length >= 50) break;
@@ -186,7 +223,7 @@ export class ContentExtractor {
             }
           }
           if (chunk.trim() && topSections.length < 50) {
-            topSections.push({ tag: 'div', text: chunk.trim(), attention: 0.3 });
+            topSections.push({ tag: 'div', text: chunk.trim(), attention: 0.3, order: topSections.length });
           }
         }
       }
@@ -216,7 +253,13 @@ export class ContentExtractor {
         if (name && content) metadata[name] = content;
       });
 
-      return { title, sections: topSections, links, images, metadata };
+      return {
+        title,
+        sections: topSections.map(({ order: _order, ...section }) => section),
+        links,
+        images,
+        metadata,
+      };
     });
   }
 }

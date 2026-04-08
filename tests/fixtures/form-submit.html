@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Submit Form</title>
+</head>
+<body>
+  <main>
+    <h1>Feedback Form</h1>
+    <form id="feedback-form">
+      <label for="email">Email</label>
+      <input id="email" type="email" placeholder="Email">
+      <label for="message">Message</label>
+      <textarea id="message" placeholder="Message"></textarea>
+      <button id="submit-btn" type="submit">Submit</button>
+    </form>
+    <div id="status"></div>
+  </main>
+  <script>
+    document.getElementById('feedback-form').addEventListener('submit', function (event) {
+      event.preventDefault();
+      document.getElementById('status').textContent = 'Thanks for submitting';
+      window.location.hash = 'submitted';
+      document.title = 'Submit Success';
+    });
+  </script>
+</body>
+</html>

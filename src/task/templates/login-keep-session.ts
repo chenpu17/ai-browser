@@ -77,7 +77,11 @@ async function resolveElementId(
 
     try {
       const semanticId = await tab.page.$eval(selector, (el) => {
-        return (el as any).getAttribute('data-semantic-id') || '';
+        return (el as any).getAttribute('data-semantic-id') || (() => {
+          const generated = `manual_${Math.random().toString(36).slice(2, 10)}`;
+          (el as HTMLElement).setAttribute('data-semantic-id', generated);
+          return generated;
+        })();
       });
       if (semanticId) {
         return semanticId;

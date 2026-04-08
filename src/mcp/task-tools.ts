@@ -11,6 +11,13 @@ import { executeLoginKeepSession, LOGIN_TOTAL_STEPS } from '../task/templates/lo
 import type { LoginKeepSessionInputs } from '../task/templates/login-keep-session.js';
 import { executeMultiTabCompare } from '../task/templates/multi-tab-compare.js';
 import type { MultiTabCompareInputs } from '../task/templates/multi-tab-compare.js';
+import { executeSearchExtract } from '../task/templates/search-extract.js';
+import type { SearchExtractInputs } from '../task/templates/search-extract.js';
+import { executePaginatedExtract } from '../task/templates/paginated-extract.js';
+import type { PaginatedExtractInputs } from '../task/templates/paginated-extract.js';
+import { executeSubmitAndVerify } from '../task/templates/submit-and-verify.js';
+import type { SubmitAndVerifyInputs } from '../task/templates/submit-and-verify.js';
+import { validateTemplateInputs } from '../task/templates/validation.js';
 import type { CancelToken } from '../task/cancel-token.js';
 import { enrichWithAiMarkdown } from './ai-markdown.js';
 
@@ -143,6 +150,7 @@ export function registerTaskTools(
           version: t.version,
           name: t.name,
           description: t.description,
+          exampleInputs: t.exampleInputs,
           trustLevelSupport: t.trustLevelSupport,
           executionMode: t.executionMode,
           limits: t.limits,
@@ -192,46 +200,9 @@ export function registerTaskTools(
         throw makeError('options.mode must be one of: sync, async, auto', ErrorCode.INVALID_PARAMETER);
       }
 
-      // Template-specific input validation
-      if (templateId === 'batch_extract_pages') {
-        const batchInputs = inputs as BatchExtractInputs;
-        if (!batchInputs.urls || !Array.isArray(batchInputs.urls) || batchInputs.urls.length === 0) {
-          throw makeError('inputs.urls must be a non-empty array of URLs', ErrorCode.INVALID_PARAMETER);
-        }
-        if (batchInputs.urls.length > 1000) {
-          throw makeError('inputs.urls exceeds maximum of 1000 URLs', ErrorCode.INVALID_PARAMETER);
-        }
-        if (batchInputs.concurrency !== undefined && (!Number.isInteger(batchInputs.concurrency) || batchInputs.concurrency < 1 || batchInputs.concurrency > 5)) {
-          throw makeError('inputs.concurrency must be an integer between 1 and 5', ErrorCode.INVALID_PARAMETER);
-        }
-      } else if (templateId === 'multi_tab_compare') {
-        const compareInputs = inputs as MultiTabCompareInputs;
-        if (!compareInputs.urls || !Array.isArray(compareInputs.urls) || compareInputs.urls.length === 0) {
-          throw makeError('inputs.urls must be a non-empty array of URLs', ErrorCode.INVALID_PARAMETER);
-        }
-        if (compareInputs.urls.length > 10) {
-          throw makeError('inputs.urls exceeds maximum of 10 URLs', ErrorCode.INVALID_PARAMETER);
-        }
-        if (compareInputs.concurrency !== undefined && (!Number.isInteger(compareInputs.concurrency) || compareInputs.concurrency < 1 || compareInputs.concurrency > 5)) {
-          throw makeError('inputs.concurrency must be an integer between 1 and 5', ErrorCode.INVALID_PARAMETER);
-        }
-
-        const fields = compareInputs.compare?.fields ?? ['title', 'elementCount', 'topSections'];
-        const needsPageInfo = fields.includes('title') || fields.includes('elementCount');
-        const needsContent = fields.includes('topSections');
-
-        if (compareInputs.extract?.pageInfo === false && needsPageInfo) {
-          throw makeError(
-            'inputs.extract.pageInfo=false is incompatible with compare.fields including title/elementCount',
-            ErrorCode.INVALID_PARAMETER,
-          );
-        }
-        if (compareInputs.extract?.content === false && needsContent) {
-          throw makeError(
-            'inputs.extract.content=false is incompatible with compare.fields including topSections',
-            ErrorCode.INVALID_PARAMETER,
-          );
-        }
+      const validation = validateTemplateInputs(templateId, inputs);
+      if (!validation.valid) {
+        throw makeError(validation.errors[0], ErrorCode.INVALID_PARAMETER);
       }
 
       // Resolve session
@@ -247,6 +218,12 @@ export function registerTaskTools(
       } else if (templateId === 'multi_tab_compare') {
         // urls.length extractions + 1 diff step
         totalSteps = (inputs as MultiTabCompareInputs).urls.length + 1;
+      } else if (templateId === 'search_extract') {
+        totalSteps = 5;
+      } else if (templateId === 'paginated_extract') {
+        totalSteps = (inputs as PaginatedExtractInputs).pagination.maxPages;
+      } else if (templateId === 'submit_and_verify') {
+        totalSteps = Math.max(5, (inputs as SubmitAndVerifyInputs).fields.length + 3);
       } else {
         totalSteps = 1;
       }
@@ -260,6 +237,8 @@ export function registerTaskTools(
         } else if (templateId === 'batch_extract_pages') {
           mode = (inputs as BatchExtractInputs).urls.length <= 10 ? 'sync' : 'async';
         } else if (templateId === 'multi_tab_compare') {
+          mode = 'sync';
+        } else if (templateId === 'paginated_extract' || templateId === 'submit_and_verify' || templateId === 'search_extract') {
           mode = 'sync';
         } else {
           mode = 'sync';
@@ -282,6 +261,18 @@ export function registerTaskTools(
       } else if (templateId === 'multi_tab_compare') {
         executor = (_runId: string, token: CancelToken, onProgress: (done: number) => void) => {
           return executeMultiTabCompare(toolCtx, sessionId, inputs as MultiTabCompareInputs, token, onProgress);
+        };
+      } else if (templateId === 'search_extract') {
+        executor = (_runId: string, token: CancelToken, onProgress: (done: number) => void) => {
+          return executeSearchExtract(toolCtx, sessionId, inputs as SearchExtractInputs, token, onProgress);
+        };
+      } else if (templateId === 'paginated_extract') {
+        executor = (_runId: string, token: CancelToken, onProgress: (done: number) => void) => {
+          return executePaginatedExtract(toolCtx, sessionId, inputs as PaginatedExtractInputs, token, onProgress);
+        };
+      } else if (templateId === 'submit_and_verify') {
+        executor = (_runId: string, token: CancelToken, onProgress: (done: number) => void) => {
+          return executeSubmitAndVerify(toolCtx, sessionId, inputs as SubmitAndVerifyInputs, token, onProgress);
         };
       } else {
         throw makeError(`No executor for template: ${templateId}`, ErrorCode.TEMPLATE_NOT_FOUND);

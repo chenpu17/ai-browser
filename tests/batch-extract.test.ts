@@ -53,9 +53,10 @@ describe('batch_extract_pages', () => {
   it('list_task_templates returns batch_extract_pages', async () => {
     const res = await mcpClient.callTool({ name: 'list_task_templates', arguments: {} });
     const data = parseResult(res);
-    expect(data.templates).toHaveLength(3);
+    expect(data.templates).toHaveLength(6);
     expect(data.templates[0].templateId).toBe('batch_extract_pages');
     expect(data.templates[0].executionMode).toBe('auto');
+    expect(data.templates[0].exampleInputs.urls).toHaveLength(2);
   });
 
   // --- template not found ---

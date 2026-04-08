@@ -114,6 +114,33 @@ describe('ConversationManager', () => {
     expect(summaryMsg.role).toBe('user');
     expect(typeof summaryMsg.content).toBe('string');
     expect((summaryMsg.content as string)).toContain(longContent.slice(0, 120));
-    expect((summaryMsg.content as string)).toContain(longContent.slice(90, 140));
+    expect((summaryMsg.content as string)).toContain(longContent.slice(-40));
+  });
+
+  it('treats get_page_info as content-bearing during compression', () => {
+    const cm = new ConversationManager({
+      compressThreshold: 8,
+      keepRecent: 3,
+    });
+    const structured = JSON.stringify({
+      page: { url: 'https://example.com', title: 'Example' },
+      elements: Array.from({ length: 40 }, (_, i) => ({ id: `el_${i}`, label: `Element ${i}` })),
+    });
+    cm.init('sys', [], 'task');
+    cm.push({
+      role: 'assistant',
+      content: 'Inspecting page',
+      tool_calls: [{ id: 'tc1', type: 'function', function: { name: 'get_page_info', arguments: '{}' } }],
+    } as any);
+    cm.push({ role: 'tool', tool_call_id: 'tc1', content: structured } as any);
+    cm.push({ role: 'assistant', content: 'step 1' });
+    cm.push({ role: 'assistant', content: 'step 2' });
+    cm.push({ role: 'assistant', content: 'step 3' });
+    cm.push({ role: 'assistant', content: 'step 4' });
+    cm.push({ role: 'assistant', content: 'step 5' });
+
+    const summaryMsg = cm.getMessages()[1];
+    expect(typeof summaryMsg.content).toBe('string');
+    expect(summaryMsg.content as string).toContain('el_0');
   });
 });

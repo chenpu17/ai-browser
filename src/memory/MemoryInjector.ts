@@ -97,13 +97,25 @@ export class MemoryInjector {
     // Task intents first (most valuable context for the agent), cap at 3
     let intents = card.patterns.filter(p => p.type === 'task_intent');
     if (taskHint && intents.length > 0) {
-      // Sort by substring relevance (CJK-compatible), then by recency
+      // Sort by substring relevance (CJK-compatible), then by recency/confidence
       intents.sort((a, b) => {
-        const scoreA = relevanceScore(a.value, taskHint);
-        const scoreB = relevanceScore(b.value, taskHint);
+        const scoreA = Math.max(relevanceScore(a.value, taskHint), relevanceScore(a.description, taskHint));
+        const scoreB = Math.max(relevanceScore(b.value, taskHint), relevanceScore(b.description, taskHint));
         if (scoreA !== scoreB) return scoreB - scoreA;
+        const effectiveA = a.confidence * Math.max(1, Math.log2(a.useCount + 1));
+        const effectiveB = b.confidence * Math.max(1, Math.log2(b.useCount + 1));
+        if (effectiveA !== effectiveB) return effectiveB - effectiveA;
         return b.lastUsedAt - a.lastUsedAt;
       });
+      const matched = intents.filter((intent) =>
+        Math.max(relevanceScore(intent.value, taskHint), relevanceScore(intent.description, taskHint)) > 0
+      );
+      if (matched.length > 0) {
+        const unmatched = intents.filter((intent) => !matched.includes(intent));
+        intents = [...matched, ...unmatched];
+      } else {
+        intents = intents.slice(0, 1);
+      }
     } else {
       intents.sort((a, b) => b.lastUsedAt - a.lastUsedAt);
     }
